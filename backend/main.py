@@ -1,8 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Optional
 import json
+import os
+import time
 import models
 from database import SessionLocal, engine, get_db
 from pydantic import BaseModel
@@ -12,6 +15,11 @@ from fastapi.middleware.cors import CORSMiddleware
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="根脉 API")
+
+# 配置静态文件服务，使前端能够访问上传的音频
+UPLOAD_DIR = "uploads/audio"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # CORS - 允许开发环境跨域
 app.add_middleware(
@@ -290,13 +298,25 @@ def create_story_person(sp: StoryPersonCreate, db: Session = Depends(get_db)):
 
 
 @app.post("/stories/process")
-def process_audio(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def process_audio(
+    file: UploadFile = File(...),
+    person_id: str = "",
+    db: Session = Depends(get_db)
+):
     """
-    上传音频并进行处理：转录、分析主题和年份
-    由于没有实际 AI 服务，返回模拟数据
+    上传音频并进行处理：保存音频、转录、分析主题和年份
     """
-    # 读取文件内容（如果有需要可以保存）
-    file_content = file.file.read() if file else None
+    # 保存音频文件
+    timestamp = int(time.time() * 1000)
+    filename = f"audio_{timestamp}.webm"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+
+    # 写入文件
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    audio_url = f"/uploads/audio/{filename}"
 
     # 实际项目中这里会调用语音识别 API 和 NLP 分析
     # 现在返回模拟数据
@@ -312,6 +332,7 @@ def process_audio(file: UploadFile = File(...), db: Session = Depends(get_db)):
     suggested_year = random.randint(1950, 2000)
 
     return {
+        "audio_url": audio_url,
         "transcript": transcript,
         "suggested_themes": suggested_themes,
         "suggested_year": suggested_year,
