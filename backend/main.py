@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 import models
 from database import SessionLocal, engine, get_db
+from typing import Optional
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,10 +24,10 @@ app.add_middleware(
 # Pydantic models
 class PersonBase(BaseModel):
     name: str
-    birth_date: str = None
-    death_date: str = None
-    gender: str = None
-    bio: str = None
+    birth_date: Optional[str] = None
+    death_date: Optional[str] = None
+    gender: Optional[str] = None
+    bio: Optional[str] = None
 
 class PersonCreate(PersonBase):
     pass
@@ -44,7 +45,7 @@ class RelationshipCreate(BaseModel):
 class StoryBase(BaseModel):
     title: str
     content: str
-    audio_url: str = None
+    audio_url: Optional[str] = None
 
 class StoryCreate(StoryBase):
     person_ids: List[int] = []
