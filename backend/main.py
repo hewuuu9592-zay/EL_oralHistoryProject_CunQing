@@ -1,9 +1,9 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+import json
 import models
 from database import SessionLocal, engine, get_db
-from typing import Optional
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,117 +12,164 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="根脉 API")
 
-# CORS
+# CORS - 允许 localhost:5173
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Pydantic models
+# ============= Pydantic Models =============
+
 class PersonBase(BaseModel):
     name: str
-    birth_date: Optional[str] = None
-    death_date: Optional[str] = None
     gender: Optional[str] = None
+    birth_year: Optional[int] = None
+    death_year: Optional[int] = None
     bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    family_id: Optional[str] = "default"
 
 class PersonCreate(PersonBase):
     pass
 
 class Person(PersonBase):
-    id: int
+    id: str
+    created_at: Optional[str] = None
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class RelationshipCreate(BaseModel):
-    person1_id: int
-    person2_id: int
-    relationship_type: str
+    person_a_id: str
+    person_b_id: str
+    relation_type: str  # father/mother/spouse/sibling/child/other
+    label: Optional[str] = None
+
+class RelationshipResponse(BaseModel):
+    id: str
+    person_a_id: str
+    person_b_id: str
+    relation_type: str
+    label: Optional[str] = None
+    class Config:
+        from_attributes = True
 
 class StoryBase(BaseModel):
-    title: str
-    content: str
+    person_ids: Optional[str] = None  # JSON string
     audio_url: Optional[str] = None
+    transcript: Optional[str] = None
+    summary: Optional[str] = None
+    year: Optional[int] = None
+    decade: Optional[str] = None
+    theme: Optional[str] = None
 
 class StoryCreate(StoryBase):
-    person_ids: List[int] = []
+    pass
 
 class Story(StoryBase):
-    id: int
+    id: str
+    created_at: Optional[str] = None
     class Config:
-        orm_mode = True
+        from_attributes = True
 
-# API Endpoints
+class StoryPersonCreate(BaseModel):
+    story_id: str
+    person_id: str
+    is_protagonist: Optional[bool] = False
+
+class StoryPersonResponse(BaseModel):
+    id: str
+    story_id: str
+    person_id: str
+    is_protagonist: bool
+    class Config:
+        from_attributes = True
+
+# ============= API Endpoints =============
 
 @app.get("/persons", response_model=List[Person])
 def read_persons(db: Session = Depends(get_db)):
-    return db.query(models.Person).all()
+    """返回所有人物列表"""
+    return db.query(models.Person).order_by(models.Person.created_at.desc()).all()
 
 @app.post("/persons", response_model=Person)
 def create_person(person: PersonCreate, db: Session = Depends(get_db)):
-    db_person = models.Person(**person.dict())
+    """新增人物"""
+    db_person = models.Person(**person.model_dump())
     db.add(db_person)
     db.commit()
     db.refresh(db_person)
     return db_person
 
-@app.get("/persons/{id}", response_model=Person)
-def read_person(id: int, db: Session = Depends(get_db)):
-    db_person = db.query(models.Person).filter(models.Person.id == id).first()
+@app.get("/persons/{person_id}", response_model=Person)
+def read_person(person_id: str, db: Session = Depends(get_db)):
+    """返回单个人物详情"""
+    db_person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if db_person is None:
-        raise HTTPException(status_code=404, detail="Person not found")
+        raise HTTPException(status_code=404, detail="人物不存在")
     return db_person
 
-@app.get("/relationships", response_model=List[dict])
+@app.get("/relationships", response_model=List[RelationshipResponse])
 def read_relationships(db: Session = Depends(get_db)):
-    rels = db.query(models.Relationship).all()
-    return [{"id": r.id, "person1_id": r.person1_id, "person2_id": r.person2_id, "relationship_type": r.relationship_type} for r in rels]
+    """返回所有关系"""
+    return db.query(models.Relationship).all()
 
-@app.post("/relationships")
+@app.post("/relationships", response_model=RelationshipResponse)
 def create_relationship(rel: RelationshipCreate, db: Session = Depends(get_db)):
-    db_rel = models.Relationship(**rel.dict())
+    """新增关系"""
+    db_rel = models.Relationship(**rel.model_dump())
     db.add(db_rel)
     db.commit()
     db.refresh(db_rel)
     return db_rel
 
-@app.get("/persons/{id}/stories", response_model=List[Story])
-def read_person_stories(id: int, db: Session = Depends(get_db)):
-    person = db.query(models.Person).filter(models.Person.id == id).first()
-    if person is None:
-        raise HTTPException(status_code=404, detail="Person not found")
-    return person.stories
+@app.get("/persons/{person_id}/stories", response_model=List[Story])
+def read_person_stories(person_id: str, db: Session = Depends(get_db)):
+    """返回该人物相关的所有故事"""
+    # 先找到该人物参与的所有 story_persons 记录
+    sp_records = db.query(models.StoryPerson).filter(models.StoryPerson.person_id == person_id).all()
+    story_ids = [sp.story_id for sp in sp_records]
+
+    if not story_ids:
+        return []
+
+    stories = db.query(models.Story).filter(models.Story.id.in_(story_ids)).all()
+    return stories
+
+# ============= Stories API =============
+
+@app.get("/stories", response_model=List[Story])
+def read_stories(db: Session = Depends(get_db)):
+    """返回所有故事"""
+    return db.query(models.Story).order_by(models.Story.created_at.desc()).all()
 
 @app.post("/stories", response_model=Story)
 def create_story(story: StoryCreate, db: Session = Depends(get_db)):
-    # Create story
-    db_story = models.Story(
-        title=story.title,
-        content=story.content,
-        audio_url=story.audio_url
-    )
+    """新增故事"""
+    db_story = models.Story(**story.model_dump())
     db.add(db_story)
-    db.commit()
-    db.refresh(db_story)
-    
-    # Link to persons
-    for p_id in story.person_ids:
-        db_sp = models.StoryPerson(story_id=db_story.id, person_id=p_id)
-        db.add(db_sp)
-    
     db.commit()
     db.refresh(db_story)
     return db_story
 
-@app.get("/stories/{id}", response_model=Story)
-def read_story(id: int, db: Session = Depends(get_db)):
-    db_story = db.query(models.Story).filter(models.Story.id == id).first()
+@app.get("/stories/{story_id}", response_model=Story)
+def read_story(story_id: str, db: Session = Depends(get_db)):
+    """返回单个故事详情"""
+    db_story = db.query(models.Story).filter(models.Story.id == story_id).first()
     if db_story is None:
-        raise HTTPException(status_code=404, detail="Story not found")
+        raise HTTPException(status_code=404, detail="故事不存在")
     return db_story
+
+@app.post("/story-persons", response_model=StoryPersonResponse)
+def create_story_person(sp: StoryPersonCreate, db: Session = Depends(get_db)):
+    """将人物关联到故事"""
+    db_sp = models.StoryPerson(**sp.model_dump())
+    db.add(db_sp)
+    db.commit()
+    db.refresh(db_sp)
+    return db_sp
 
 if __name__ == "__main__":
     import uvicorn
