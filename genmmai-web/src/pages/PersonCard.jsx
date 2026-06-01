@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getPerson, getPersonStories } from '../api';
+import { getPerson, getPersonStories, getPersonStoryThemes } from '../api';
 
 // 主题颜色映射
 const THEME_COLORS = {
-  '家乡记忆': { bg: '#DCFCE7', text: '#166534' },      // 绿色
-  '工作岁月': { bg: '#DBEAFE', text: '#1E40AF' },      // 蓝色
-  '爱情婚姻': { bg: '#FCE7F9', text: '#9D174D' },      // 粉色
-  '历史亲历': { bg: '#FEF9C3', text: '#854D0E' },      // 黄色
-  '家族传承': { bg: '#166534', text: '#FFFFFF' },         // 深绿
-  '童年往事': { bg: '#FFEDD5', text: '#9A3412' },        // 橙色
-  '其他': { bg: '#F3F4F6', text: '#374151' },         // 灰色
+  '家乡记忆': { bg: '#DCFCE7', text: '#166534', emoji: '🏠' },  // 绿色
+  '工作岁月': { bg: '#DBEAFE', text: '#1E40AF', emoji: '💼' },  // 蓝色
+  '爱情婚姻': { bg: '#FCE7F9', text: '#9D174D', emoji: '💕' },  // 粉色
+  '历史亲历': { bg: '#FEF9C3', text: '#854D0E', emoji: '📜' },  // 黄色
+  '家族传承': { bg: '#166534', text: '#FFFFFF', emoji: '🌳' },  // 深绿
+  '童年往事': { bg: '#FFEDD5', text: '#9A3412', emoji: '🧒' },  // 橙色
+  '其他': { bg: '#F3F4F6', text: '#374151', emoji: '📝' },  // 灰色
 };
 
 const getThemeStyle = (theme) => {
@@ -37,6 +37,13 @@ const Timeline = ({ stories, person, onStoryClick }) => {
     );
   }
 
+  // 按 year 排序（null 值排最后）
+  const sortedStories = [...stories].sort((a, b) => {
+    if (!a.year) return 1;
+    if (!b.year) return -1;
+    return a.year - b.year;
+  });
+
   return (
     <div className="relative pl-4">
       {/* 顶部起点 */}
@@ -50,7 +57,7 @@ const Timeline = ({ stories, person, onStoryClick }) => {
 
       {/* 故事节点 */}
       <div className="space-y-6">
-        {stories.map((story, index) => {
+        {sortedStories.map((story, index) => {
           const themeStyle = getThemeStyle(story.theme);
           return (
             <div
@@ -73,7 +80,7 @@ const Timeline = ({ stories, person, onStoryClick }) => {
                   className="inline-block px-2 py-0.5 rounded-full text-xs mt-1"
                   style={{ backgroundColor: themeStyle.bg, color: themeStyle.text }}
                 >
-                  {story.theme || '其他'}
+                  {themeStyle.emoji} {story.theme || '其他'}
                 </div>
 
                 {/* 摘要 */}
@@ -97,23 +104,121 @@ const Timeline = ({ stories, person, onStoryClick }) => {
   );
 };
 
+// 主题顺序
+const THEMES_ORDER = [
+  '家乡记忆', '工作岁月', '爱情婚姻', '历史亲历',
+  '家族传承', '童年往事', '其他'
+];
+
+const ThemeStories = ({ themes, stories, onStoryClick }) => {
+  const [expandedTheme, setExpandedTheme] = useState(null);
+
+  // 将 themes 数据转换为按顺序排列
+  const orderedThemes = THEMES_ORDER.map(themeName => {
+    const themeData = themes.find(t => t.theme === themeName);
+    return {
+      name: themeName,
+      count: themeData?.count || 0,
+    };
+  });
+
+  const toggleTheme = (themeName) => {
+    setExpandedTheme(prev => prev === themeName ? null : themeName);
+  };
+
+  const getStoriesByTheme = (themeName) => {
+    return stories.filter(s => (s.theme || '其他') === themeName);
+  };
+
+  if (!themes || themes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <p className="text-gray-500">还没有故事</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {orderedThemes.map(({ name, count }) => {
+        const themeStyle = getThemeStyle(name);
+        const isExpanded = expandedTheme === name;
+        const themeStories = getStoriesByTheme(name);
+        const hasStories = count > 0;
+
+        return (
+          <div key={name}>
+            <div
+              className={`p-4 rounded-lg cursor-pointer transition-all ${
+                hasStories
+                  ? 'bg-white border border-[#E5DED3]'
+                  : 'bg-gray-100'
+              }`}
+              onClick={() => hasStories && toggleTheme(name)}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-2xl">{themeStyle.emoji}</span>
+                <span
+                  className={`text-2xl font-bold ${
+                    hasStories ? 'text-[#D4A574]' : 'text-gray-400'
+                  }`}
+                >
+                  {hasStories ? count : '暂无'}
+                </span>
+              </div>
+              <div
+                className={`mt-2 text-sm ${hasStories ? 'text-[#4A3728]' : 'text-gray-400'}`}
+              >
+                {name}
+              </div>
+            </div>
+
+            {/* 展开的故事列表 */}
+            {isExpanded && themeStories.length > 0 && (
+              <div className="mt-2 space-y-2 pl-2">
+                {themeStories.map(story => (
+                  <div
+                    key={story.id}
+                    className="flex items-start gap-2 p-2 bg-white rounded border border-[#E5DED3] cursor-pointer hover:bg-gray-50"
+                    onClick={() => onStoryClick(story.id)}
+                  >
+                    <span className="text-xs font-bold text-[#D4A574] shrink-0">
+                      {story.year || '?'}
+                    </span>
+                    <span className="text-xs text-[#4A3728] line-clamp-2">
+                      {story.summary || story.transcript?.slice(0, 30) || '暂无摘要'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 const PersonCard = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [person, setPerson] = useState(null);
   const [stories, setStories] = useState([]);
+  const [themes, setThemes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('timeline');
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [personRes, storiesRes] = await Promise.all([
+        const [personRes, storiesRes, themesRes] = await Promise.all([
           getPerson(id),
           getPersonStories(id),
+          getPersonStoryThemes(id),
         ]);
         setPerson(personRes.data);
         setStories(storiesRes.data);
+        setThemes(themesRes.data);
       } catch (error) {
         console.error('获取数据失败:', error);
       } finally {
@@ -242,7 +347,11 @@ const PersonCard = () => {
             />
           )}
           {activeTab === 'stories' && (
-            <p className="text-gray-500">主题故事集（开发中）</p>
+            <ThemeStories
+              themes={themes}
+              stories={stories}
+              onStoryClick={(storyId) => navigate(`/story/${storyId}`)}
+            />
           )}
         </div>
       </div>
