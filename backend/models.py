@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Text, DateTime, Boolean, JSON
+from sqlalchemy import Column, String, Integer, Text, DateTime, Boolean, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -24,8 +24,8 @@ class Person(Base):
 class Relationship(Base):
     __tablename__ = "relationships"
     id = Column(String, primary_key=True, default=generate_uuid)
-    person_a_id = Column(String, nullable=False)
-    person_b_id = Column(String, nullable=False)
+    person_a_id = Column(String, ForeignKey("persons.id"), nullable=False)
+    person_b_id = Column(String, ForeignKey("persons.id"), nullable=False)
     relation_type = Column(String, nullable=False)  # father/mother/spouse/sibling/child/other
     label = Column(String, nullable=True)
 
@@ -46,8 +46,8 @@ class Story(Base):
 class StoryPerson(Base):
     __tablename__ = "story_persons"
     id = Column(String, primary_key=True, default=generate_uuid)
-    story_id = Column(String, nullable=False)
-    person_id = Column(String, nullable=False)
+    story_id = Column(String, ForeignKey("stories.id"), nullable=False)
+    person_id = Column(String, ForeignKey("persons.id"), nullable=False)
     is_protagonist = Column(Boolean, default=False)
 
     story = relationship("Story", back_populates="story_persons")

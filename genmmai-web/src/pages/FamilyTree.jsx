@@ -10,7 +10,7 @@ import {
   useEdgesState,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { getPersons, getRelationships } from '../api'
+import { getPersons, getRelationships, createPerson } from '../api'
 
 // 自定义人物节点组件
 const PersonNode = ({ data }) => {

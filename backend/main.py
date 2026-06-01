@@ -12,10 +12,10 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="根脉 API")
 
-# CORS - 允许 localhost:5173
+# CORS - 允许开发环境跨域
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
