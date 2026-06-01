@@ -167,9 +167,14 @@ def delete_relationship(rel_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "关系已删除"}
 
+THEMES = [
+    "家乡记忆", "工作岁月", "爱情婚姻", "历史亲历",
+    "家族传承", "童年往事", "其他"
+]
+
 @app.get("/persons/{person_id}/stories", response_model=List[Story])
 def read_person_stories(person_id: str, db: Session = Depends(get_db)):
-    """返回该人物相关的所有故事"""
+    """返回该人物相关的所有故事，按 year 升序排列"""
     # 先找到该人物参与的所有 story_persons 记录
     sp_records = db.query(models.StoryPerson).filter(models.StoryPerson.person_id == person_id).all()
     story_ids = [sp.story_id for sp in sp_records]
@@ -177,8 +182,40 @@ def read_person_stories(person_id: str, db: Session = Depends(get_db)):
     if not story_ids:
         return []
 
-    stories = db.query(models.Story).filter(models.Story.id.in_(story_ids)).all()
+    # 按 year 升序排列，null 值排最后
+    stories = db.query(models.Story).filter(models.Story.id.in_(story_ids)).order_by(
+        models.Story.year.is_(None),
+        models.Story.year.asc()
+    ).all()
     return stories
+
+
+@app.get("/persons/{person_id}/stories/themes")
+def get_person_story_themes(person_id: str, db: Session = Depends(get_db)):
+    """返回该人物所有故事的主题分布"""
+    # 获取该人物所有故事的主题
+    sp_records = db.query(models.StoryPerson).filter(models.StoryPerson.person_id == person_id).all()
+    story_ids = [sp.story_id for sp in sp_records]
+
+    if not story_ids:
+        # 没有故事时，所有主题 count 都为 0
+        return [{"theme": theme, "count": 0} for theme in THEMES]
+
+    stories = db.query(models.Story.theme, models.Story.id).filter(models.Story.id.in_(story_ids)).all()
+
+    # 统计各主题数量
+    theme_counts = {}
+    for theme in THEMES:
+        theme_counts[theme] = 0
+
+    for story in stories:
+        theme = story.theme or "其他"
+        if theme in theme_counts:
+            theme_counts[theme] += 1
+        else:
+            theme_counts["其他"] += 1
+
+    return [{"theme": theme, "count": count} for theme, count in theme_counts.items()]
 
 # ============= Stories API =============
 
