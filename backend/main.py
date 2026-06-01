@@ -112,6 +112,37 @@ def read_person(person_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="人物不存在")
     return db_person
 
+@app.put("/persons/{person_id}", response_model=Person)
+def update_person(person_id: str, person: PersonCreate, db: Session = Depends(get_db)):
+    """更新人物信息"""
+    db_person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if db_person is None:
+        raise HTTPException(status_code=404, detail="人物不存在")
+    
+    for key, value in person.model_dump().items():
+        setattr(db_person, key, value)
+    
+    db.commit()
+    db.refresh(db_person)
+    return db_person
+
+@app.delete("/persons/{person_id}")
+def delete_person(person_id: str, db: Session = Depends(get_db)):
+    """删除人物及其相关关系"""
+    db_person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if db_person is None:
+        raise HTTPException(status_code=404, detail="人物不存在")
+    
+    # 删除关联的关系
+    db.query(models.Relationship).filter(
+        (models.Relationship.person_a_id == person_id) | 
+        (models.Relationship.person_b_id == person_id)
+    ).delete()
+    
+    db.delete(db_person)
+    db.commit()
+    return {"message": "人物已删除"}
+
 @app.get("/relationships", response_model=List[RelationshipResponse])
 def read_relationships(db: Session = Depends(get_db)):
     """返回所有关系"""
@@ -125,6 +156,16 @@ def create_relationship(rel: RelationshipCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_rel)
     return db_rel
+
+@app.delete("/relationships/{rel_id}")
+def delete_relationship(rel_id: str, db: Session = Depends(get_db)):
+    """删除关系"""
+    db_rel = db.query(models.Relationship).filter(models.Relationship.id == rel_id).first()
+    if db_rel is None:
+        raise HTTPException(status_code=404, detail="关系不存在")
+    db.delete(db_rel)
+    db.commit()
+    return {"message": "关系已删除"}
 
 @app.get("/persons/{person_id}/stories", response_model=List[Story])
 def read_person_stories(person_id: str, db: Session = Depends(get_db)):

@@ -10,14 +10,15 @@ import {
   useEdgesState,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { getPersons, getRelationships, createPerson } from '../api'
+import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson } from '../api'
 
 // 自定义人物节点组件
 const PersonNode = ({ data }) => {
   const navigate = useNavigate()
-  const { person } = data
+  const { person, onEdit, onDelete } = data
 
-  const handleClick = () => {
+  const handleClick = (e) => {
+    e.stopPropagation()
     navigate(`/person/${person.id}`)
   }
 
@@ -30,10 +31,26 @@ const PersonNode = ({ data }) => {
 
   return (
     <div
+      className="group relative w-[130px] bg-white rounded-lg shadow-md border-2 border-[#D4C4B0] p-3 flex flex-col items-center cursor-pointer hover:border-[#C9A84C] hover:shadow-lg transition-all"
       onClick={handleClick}
-      className="w-[120px] bg-white rounded-lg shadow-md border-2 border-[#D4C4B0] p-3 flex flex-col items-center cursor-pointer hover:border-[#C9A84C] hover:shadow-lg transition-all"
     >
       <Handle type="target" position={Position.Top} className="!bg-[#5C3D2E]" />
+
+      {/* 操作按钮 - 悬浮显示 */}
+      <div className="absolute -top-2 -right-2 hidden group-hover:flex gap-1 z-20">
+        <button 
+          onClick={(e) => { e.stopPropagation(); onEdit(person); }}
+          className="p-1 bg-white border border-[#D4C4B0] rounded shadow-sm hover:bg-[#FAF7F2] text-blue-600 text-[10px]"
+        >
+          ✎
+        </button>
+        <button 
+          onClick={(e) => { e.stopPropagation(); onDelete(person.id); }}
+          className="p-1 bg-white border border-[#D4C4B0] rounded shadow-sm hover:bg-red-50 text-red-600 text-[10px]"
+        >
+          ✕
+        </button>
+      </div>
 
       {/* 头像 */}
       <div className="w-10 h-10 rounded-full bg-[#C9A84C] flex items-center justify-center mb-2 overflow-hidden">
@@ -178,12 +195,16 @@ const FamilyTree = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingPerson, setEditingPerson] = useState(null)
   const [newPerson, setNewPerson] = useState({
     name: '',
     birth_year: '',
     death_year: '',
     gender: '男',
-    bio: ''
+    bio: '',
+    father_id: '',
+    mother_id: '',
+    spouse_id: ''
   })
 
   // 加载数据
@@ -202,7 +223,29 @@ const FamilyTree = () => {
         personsData,
         relsData
       )
-      setNodes(layoutedNodes)
+
+      // 注入操作回调
+      const nodesWithActions = layoutedNodes.map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          onEdit: (p) => {
+            setEditingPerson(p)
+            setNewPerson({
+              name: p.name,
+              birth_year: p.birth_year || '',
+              death_year: p.death_year || '',
+              gender: p.gender || '男',
+              bio: p.bio || '',
+              father_id: '', mother_id: '', spouse_id: '' // 编辑模式暂不处理初始关系修改
+            })
+            setShowAddModal(true)
+          },
+          onDelete: (id) => handleDeletePerson(id)
+        }
+      }))
+
+      setNodes(nodesWithActions)
       setEdges(layoutedEdges)
     } catch (error) {
       console.error('Failed to load data:', error)
@@ -217,24 +260,58 @@ const FamilyTree = () => {
 
   const handleAddPerson = (e) => {
     e?.stopPropagation()
+    setEditingPerson(null)
+    setNewPerson({ name: '', birth_year: '', death_year: '', gender: '男', bio: '', father_id: '', mother_id: '', spouse_id: '' })
     setShowAddModal(true)
+  }
+
+  const handleDeletePerson = async (id) => {
+    if (!window.confirm("确定要删除这位成员吗？相关的家族关系也会被一并删除。")) return
+    try {
+      await deletePerson(id)
+      fetchData()
+    } catch (err) {
+      alert("删除失败")
+    }
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
       const payload = {
-        ...newPerson,
+        name: newPerson.name,
+        gender: newPerson.gender,
         birth_year: newPerson.birth_year ? parseInt(newPerson.birth_year) : null,
         death_year: newPerson.death_year ? parseInt(newPerson.death_year) : null,
+        bio: newPerson.bio
       }
-      await createPerson(payload)
+      
+      if (editingPerson) {
+        await updatePerson(editingPerson.id, payload)
+      } else {
+        const res = await createPerson(payload)
+        const createdPerson = res.data
+
+        // 建立多重关系
+        const relPromises = []
+        if (newPerson.father_id) {
+          relPromises.push(createRelationship({ person_a_id: newPerson.father_id, person_b_id: createdPerson.id, relation_type: 'father' }))
+        }
+        if (newPerson.mother_id) {
+          relPromises.push(createRelationship({ person_a_id: newPerson.mother_id, person_b_id: createdPerson.id, relation_type: 'mother' }))
+        }
+        if (newPerson.spouse_id) {
+          relPromises.push(createRelationship({ person_a_id: newPerson.spouse_id, person_b_id: createdPerson.id, relation_type: 'spouse' }))
+        }
+        await Promise.all(relPromises)
+      }
+
       setShowAddModal(false)
-      setNewPerson({ name: '', birth_year: '', death_year: '', gender: '男', bio: '' })
+      setEditingPerson(null)
       fetchData() // 刷新数据
     } catch (err) {
-      console.error("添加失败:", err)
-      alert("添加失败，请检查数据格式或后端服务")
+      console.error("提交失败:", err)
+      alert("提交失败，请检查数据格式或后端服务")
     }
   }
 
@@ -313,11 +390,13 @@ const FamilyTree = () => {
         </button>
       )}
 
-      {/* 添加成员弹窗 */}
+      {/* 添加/编辑成员弹窗 */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[10000]">
           <div className="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl border-2 border-[#D4C4B0]">
-            <h2 className="text-2xl font-serif text-[#5C3D2E] mb-6 text-center">新增家族成员</h2>
+            <h2 className="text-2xl font-serif text-[#5C3D2E] mb-6 text-center">
+              {editingPerson ? '编辑成员' : '新增家族成员'}
+            </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-[#6B5344] mb-1">姓名</label>
@@ -355,16 +434,68 @@ const FamilyTree = () => {
                 <label className="block text-sm font-medium text-[#6B5344] mb-1">简介</label>
                 <textarea 
                   className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
-                  rows="3"
+                  rows="2"
                   value={newPerson.bio}
                   onChange={e => setNewPerson({...newPerson, bio: e.target.value})}
                   placeholder="简要描述生平..."
                 ></textarea>
               </div>
+
+              {/* 初始关系建立 - 仅在新增时显示 */}
+              {!editingPerson && persons.length > 0 && (
+                <div className="p-3 bg-[#FAF7F2] rounded-lg border border-[#D4C4B0] space-y-2">
+                  <label className="block text-xs font-bold text-[#8B7355] uppercase mb-1">建立初始关系</label>
+                  
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-12 text-right">父亲:</span>
+                      <select 
+                        className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none"
+                        value={newPerson.father_id}
+                        onChange={e => setNewPerson({...newPerson, father_id: e.target.value})}
+                      >
+                        <option value="">(空)</option>
+                        {persons.filter(p => p.gender === '男').map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-12 text-right">母亲:</span>
+                      <select 
+                        className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none"
+                        value={newPerson.mother_id}
+                        onChange={e => setNewPerson({...newPerson, mother_id: e.target.value})}
+                      >
+                        <option value="">(空)</option>
+                        {persons.filter(p => p.gender === '女').map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-12 text-right">配偶:</span>
+                      <select 
+                        className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none"
+                        value={newPerson.spouse_id}
+                        onChange={e => setNewPerson({...newPerson, spouse_id: e.target.value})}
+                      >
+                        <option value="">(无)</option>
+                        {persons.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-end gap-3 mt-6">
                 <button 
                   type="button"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => { setShowAddModal(false); setEditingPerson(null); }}
                   className="px-4 py-2 text-[#8B7355] hover:text-[#5C3D2E]"
                 >
                   取消
@@ -373,7 +504,7 @@ const FamilyTree = () => {
                   type="submit"
                   className="px-6 py-2 bg-[#5C3D2E] text-white rounded-md hover:bg-[#3D281E] transition-colors"
                 >
-                  确认添加
+                  {editingPerson ? '保存修改' : '确认添加'}
                 </button>
               </div>
             </form>
