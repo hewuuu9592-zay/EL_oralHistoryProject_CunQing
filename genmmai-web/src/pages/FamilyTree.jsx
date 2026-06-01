@@ -177,35 +177,64 @@ const FamilyTree = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [loading, setLoading] = useState(true)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [newPerson, setNewPerson] = useState({
+    name: '',
+    birth_year: '',
+    death_year: '',
+    gender: '男',
+    bio: ''
+  })
 
   // 加载数据
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [personsRes, relsRes] = await Promise.all([
-          getPersons(),
-          getRelationships(),
-        ])
-        setPersons(personsRes.data || [])
-        setRelationships(relsRes.data || [])
+  const fetchData = async () => {
+    try {
+      const [personsRes, relsRes] = await Promise.all([
+        getPersons(),
+        getRelationships(),
+      ])
+      const personsData = personsRes.data || []
+      const relsData = relsRes.data || []
+      setPersons(personsData)
+      setRelationships(relsData)
 
-        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-          personsRes.data || [],
-          relsRes.data || []
-        )
-        setNodes(layoutedNodes)
-        setEdges(layoutedEdges)
-      } catch (error) {
-        console.error('Failed to load data:', error)
-      } finally {
-        setLoading(false)
-      }
+      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+        personsData,
+        relsData
+      )
+      setNodes(layoutedNodes)
+      setEdges(layoutedEdges)
+    } catch (error) {
+      console.error('Failed to load data:', error)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchData()
   }, [])
 
-  const handleAddPerson = () => {
-    alert('添加人物')
+  const handleAddPerson = (e) => {
+    e?.stopPropagation()
+    setShowAddModal(true)
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    try {
+      await createPerson({
+        ...newPerson,
+        birth_date: newPerson.birth_year, // 后端模型用的是 birth_date
+        death_date: newPerson.death_year
+      })
+      setShowAddModal(false)
+      setNewPerson({ name: '', birth_year: '', death_year: '', gender: '男', bio: '' })
+      fetchData() // 刷新数据
+    } catch (err) {
+      console.error("添加失败:", err)
+      alert("添加失败，请检查后端服务")
+    }
   }
 
   return (
@@ -229,8 +258,16 @@ const FamilyTree = () => {
         <div className="flex flex-col items-center justify-center h-full">
           <p className="text-[#5C3D2E] text-lg mb-4">从第一位家族成员开始</p>
           <button
-            onClick={handleAddPerson}
-            className="px-6 py-2 bg-[#5C3D2E] text-white rounded-full hover:bg-[#4A3124] transition-colors"
+            type="button"
+            onClick={(e) => handleAddPerson(e)}
+            style={{
+              padding: '8px 24px',
+              backgroundColor: '#5C3D2E',
+              color: 'white',
+              borderRadius: '9999px',
+              border: 'none',
+              cursor: 'pointer',
+            }}
           >
             添加成员
           </button>
@@ -253,11 +290,94 @@ const FamilyTree = () => {
       {/* 右下角添加按钮 */}
       {persons.length > 0 && (
         <button
-          onClick={handleAddPerson}
-          className="absolute bottom-6 right-6 w-12 h-12 rounded-full bg-[#5C3D2E] text-white text-2xl flex items-center justify-center shadow-lg hover:bg-[#4A3124] hover:scale-110 transition-all z-10"
+          type="button"
+          onClick={(e) => handleAddPerson(e)}
+          style={{
+            position: 'absolute',
+            bottom: '24px',
+            right: '24px',
+            width: '48px',
+            height: '48px',
+            borderRadius: '50%',
+            backgroundColor: '#5C3D2E',
+            color: 'white',
+            fontSize: '24px',
+            border: 'none',
+            cursor: 'pointer',
+            zIndex: 9999,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          }}
         >
           +
         </button>
+      )}
+
+      {/* 添加成员弹窗 */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[10000]">
+          <div className="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl border-2 border-[#D4C4B0]">
+            <h2 className="text-2xl font-serif text-[#5C3D2E] mb-6 text-center">新增家族成员</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-[#6B5344] mb-1">姓名</label>
+                <input 
+                  required
+                  className="w-full border-[#D4C4B0] border rounded-md p-2 focus:ring-[#C9A84C] focus:border-[#C9A84C] outline-none"
+                  value={newPerson.name}
+                  onChange={e => setNewPerson({...newPerson, name: e.target.value})}
+                  placeholder="请输入姓名"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-[#6B5344] mb-1">出生年份</label>
+                  <input 
+                    className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+                    value={newPerson.birth_year}
+                    onChange={e => setNewPerson({...newPerson, birth_year: e.target.value})}
+                    placeholder="如：1950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#6B5344] mb-1">性别</label>
+                  <select 
+                    className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+                    value={newPerson.gender}
+                    onChange={e => setNewPerson({...newPerson, gender: e.target.value})}
+                  >
+                    <option>男</option>
+                    <option>女</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#6B5344] mb-1">简介</label>
+                <textarea 
+                  className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+                  rows="3"
+                  value={newPerson.bio}
+                  onChange={e => setNewPerson({...newPerson, bio: e.target.value})}
+                  placeholder="简要描述生平..."
+                ></textarea>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button 
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 text-[#8B7355] hover:text-[#5C3D2E]"
+                >
+                  取消
+                </button>
+                <button 
+                  type="submit"
+                  className="px-6 py-2 bg-[#5C3D2E] text-white rounded-md hover:bg-[#3D281E] transition-colors"
+                >
+                  确认添加
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )
