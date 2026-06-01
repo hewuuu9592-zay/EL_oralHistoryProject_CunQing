@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
+from datetime import datetime
 from typing import List, Optional
 import json
 import models
@@ -37,7 +38,7 @@ class PersonCreate(PersonBase):
 
 class Person(PersonBase):
     id: str
-    created_at: Optional[str] = None
+    created_at: Optional[datetime] = None
     class Config:
         from_attributes = True
 
@@ -70,7 +71,7 @@ class StoryCreate(StoryBase):
 
 class Story(StoryBase):
     id: str
-    created_at: Optional[str] = None
+    created_at: Optional[datetime] = None
     class Config:
         from_attributes = True
 

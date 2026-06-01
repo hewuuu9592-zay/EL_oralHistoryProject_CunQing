@@ -223,17 +223,18 @@ const FamilyTree = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      await createPerson({
+      const payload = {
         ...newPerson,
-        birth_date: newPerson.birth_year, // 后端模型用的是 birth_date
-        death_date: newPerson.death_year
-      })
+        birth_year: newPerson.birth_year ? parseInt(newPerson.birth_year) : null,
+        death_year: newPerson.death_year ? parseInt(newPerson.death_year) : null,
+      }
+      await createPerson(payload)
       setShowAddModal(false)
       setNewPerson({ name: '', birth_year: '', death_year: '', gender: '男', bio: '' })
       fetchData() // 刷新数据
     } catch (err) {
       console.error("添加失败:", err)
-      alert("添加失败，请检查后端服务")
+      alert("添加失败，请检查数据格式或后端服务")
     }
   }
 
