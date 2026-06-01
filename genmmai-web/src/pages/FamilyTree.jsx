@@ -88,122 +88,176 @@ const relationLabels = {
   other: '其他',
 }
 
-// 改进的布局算法：严格按辈分分层，配偶对齐
+// 改进的布局算法：以血缘为核心，合并关系线，居中对齐
 const getLayoutedElements = (persons, relationships) => {
   if (!persons.length) return { nodes: [], edges: [] }
 
   const nodeWidth = 140
-  const nodeHeight = 100
-  const horizontalGap = 80
-  const verticalGap = 150
+  const horizontalGap = 100
+  const verticalGap = 200 // 增加高度给合并线留空间
 
+  const nodes = []
+  const edges = []
   const personDepth = {}
-  
-  // 1. 构建关系映射
-  const childrenOf = {} // 父母 -> 子女
-  const spouseOf = {} // 配偶 -> 配偶
-  const parentsOf = {} // 子女 -> [父母]
-  const hasParent = new Set()
+  const processed = new Set()
+
+  // 1. 构建索引
+  const childrenOf = {} // "p1_id,p2_id" -> [child_ids]
+  const spouseOf = {} // p_id -> spouse_id
+  const parentsOf = {} // p_id -> [p1, p2]
 
   relationships.forEach(rel => {
     if (rel.relation_type === 'father' || rel.relation_type === 'mother') {
-      if (!childrenOf[rel.person_a_id]) childrenOf[rel.person_a_id] = []
-      childrenOf[rel.person_a_id].push(rel.person_b_id)
-      
       if (!parentsOf[rel.person_b_id]) parentsOf[rel.person_b_id] = []
       parentsOf[rel.person_b_id].push(rel.person_a_id)
-      hasParent.add(rel.person_b_id)
     } else if (rel.relation_type === 'spouse') {
       spouseOf[rel.person_a_id] = rel.person_b_id
       spouseOf[rel.person_b_id] = rel.person_a_id
     }
   })
 
-  // 2. 递归计算深度（辈分）
-  const computeDepth = (id, currentDepth, visited = new Set()) => {
+  // 归一化父母对索引，确保 (A,B) 和 (B,A) 指向同一个家庭
+  persons.forEach(p => {
+    const parents = parentsOf[p.id] || []
+    if (parents.length > 0) {
+      // 只要有任何父母关系，就计入索引
+      const pairKey = parents.sort().join(',')
+      if (!childrenOf[pairKey]) childrenOf[pairKey] = []
+      childrenOf[pairKey].push(p.id)
+    }
+  })
+
+  // 2. 计算深度（辈分）
+  const roots = persons.filter(p => !(parentsOf[p.id] && parentsOf[p.id].length > 0))
+  const computeDepth = (id, d, visited = new Set()) => {
     if (visited.has(id)) return
     visited.add(id)
-    
-    // 设置当前深度（取最大值以应对复杂交错关系）
-    personDepth[id] = Math.max(personDepth[id] || 0, currentDepth)
-    
-    // 配偶强制同深度
-    if (spouseOf[id]) {
-      const spouseId = spouseOf[id]
-      personDepth[spouseId] = personDepth[id]
-      // 递归处理配偶的子女（防止配偶是后来加入的）
-      if (childrenOf[spouseId]) {
-        childrenOf[spouseId].forEach(childId => computeDepth(childId, currentDepth + 1, visited))
+    personDepth[id] = Math.max(personDepth[id] || 0, d)
+    const spouseId = spouseOf[id]
+    if (spouseId) personDepth[spouseId] = personDepth[id]
+
+    // 找到所有以该人为父母的孩子
+    persons.forEach(child => {
+      const parents = parentsOf[child.id] || []
+      if (parents.includes(id) || (spouseId && parents.includes(spouseId))) {
+        computeDepth(child.id, d + 1, visited)
       }
+    })
+  }
+  roots.forEach(r => computeDepth(r.id, 0))
+
+  // 3. 递归布局函数：返回该子树占用的总宽度
+  const layoutSubtree = (personId, startX, depth) => {
+    if (processed.has(personId)) return 0
+    processed.add(personId)
+
+    const person = persons.find(p => p.id === personId)
+    const spouseId = spouseOf[personId]
+    const hasSpouse = spouseId && !processed.has(spouseId)
+    if (hasSpouse) processed.add(spouseId)
+
+    // 找到家庭的所有孩子
+    const pairKey = [personId, spouseId].filter(Boolean).sort().join(',')
+    const childrenIds = childrenOf[pairKey] || []
+
+    // 递归布局所有子树
+    let childrenTotalWidth = 0
+    if (childrenIds.length > 0) {
+      childrenIds.forEach((childId, idx) => {
+        childrenTotalWidth += layoutSubtree(childId, startX + childrenTotalWidth, depth + 1)
+        if (idx < childrenIds.length - 1) childrenTotalWidth += horizontalGap
+      })
     }
 
-    // 处理子女
-    if (childrenOf[id]) {
-      childrenOf[id].forEach(childId => computeDepth(childId, currentDepth + 1, visited))
+    // 确定本级宽度：血缘节点是核心，配偶靠边站
+    const selfWidth = nodeWidth 
+    const subtreeWidth = Math.max(selfWidth, childrenTotalWidth)
+
+    // 核心逻辑：血缘节点居中对齐其所有子嗣的中轴
+    const bloodlineX = startX + (subtreeWidth - selfWidth) / 2
+    
+    // 放置血缘节点
+    nodes.push({
+      id: personId,
+      type: 'person',
+      position: { x: bloodlineX, y: depth * verticalGap },
+      data: { person }
+    })
+
+    // 放置配偶（放在血缘节点右侧，不参与中轴计算，保证垂直对齐）
+    if (hasSpouse) {
+      const spouse = persons.find(p => p.id === spouseId)
+      nodes.push({
+        id: spouseId,
+        type: 'person',
+        position: { x: bloodlineX + nodeWidth + 30, y: depth * verticalGap },
+        data: { person: spouse }
+      })
+      // 夫妻连线
+      edges.push({
+        id: `spouse-${personId}-${spouseId}`,
+        source: personId,
+        target: spouseId,
+        label: '配偶',
+        style: { stroke: '#FF6B6B', strokeDasharray: '5,5' },
+        type: 'straight'
+      })
     }
+
+    // 绘制合并的关系线（Junction 模式）
+    if (childrenIds.length > 0) {
+      // 家族交汇点（Junction）：位于父母和孩子之间
+      const junctionId = `junction-${pairKey}`
+      // 交汇点位于父母（血缘+配偶）的中点下方
+      const parentMidX = hasSpouse ? (bloodlineX + nodeWidth + 15) : (bloodlineX + nodeWidth / 2)
+      const junctionY = depth * verticalGap + 120
+
+      nodes.push({
+        id: junctionId,
+        position: { x: parentMidX, y: junctionY },
+        data: {},
+        style: { width: 0, height: 0, opacity: 0 },
+        hidden: false // 改为不隐藏，但设置 opacity 0
+      })
+
+      // 父母 -> 交汇点
+      edges.push({
+        id: `p1-j-${personId}`,
+        source: personId,
+        target: junctionId,
+        type: 'smoothstep',
+        style: { stroke: '#C9A84C', strokeWidth: 2 }
+      })
+      if (hasSpouse) {
+        edges.push({
+          id: `p2-j-${spouseId}`,
+          source: spouseId,
+          target: junctionId,
+          type: 'smoothstep',
+          style: { stroke: '#C9A84C', strokeWidth: 2 }
+        })
+      }
+
+      // 交汇点 -> 所有孩子
+      childrenIds.forEach(childId => {
+        edges.push({
+          id: `j-c-${childId}`,
+          source: junctionId,
+          target: childId,
+          type: 'smoothstep',
+          style: { stroke: '#C9A84C', strokeWidth: 2 }
+        })
+      })
+    }
+
+    return subtreeWidth
   }
 
-  // 从祖先节点开始遍历
-  const roots = persons.filter(p => !hasParent.has(p.id))
-  roots.forEach(root => computeDepth(root.id, 0))
-
-  // 处理未被遍历到的孤立节点
-  persons.forEach(p => {
-    if (personDepth[p.id] === undefined) personDepth[p.id] = 0
-  })
-
-  // 3. 按深度组织节点
-  const levels = {}
-  persons.forEach(p => {
-    const d = personDepth[p.id]
-    if (!levels[d]) levels[d] = []
-    levels[d].push(p.id)
-  })
-
-  // 4. 生成节点坐标
-  const nodes = []
-  Object.entries(levels).forEach(([depth, ids]) => {
-    const d = parseInt(depth)
-    // 排序：尝试让配偶靠在一起
-    const sortedIds = [...ids].sort((a, b) => {
-      if (spouseOf[a] === b) return -1
-      return 0
-    })
-
-    const totalWidth = sortedIds.length * nodeWidth + (sortedIds.length - 1) * horizontalGap
-    const startX = -totalWidth / 2
-
-    sortedIds.forEach((id, idx) => {
-      const person = persons.find(p => p.id === id)
-      nodes.push({
-        id: id,
-        type: 'person',
-        position: { 
-          x: startX + idx * (nodeWidth + horizontalGap), 
-          y: d * verticalGap 
-        },
-        data: { person }
-      })
-    })
-  })
-
-  // 5. 生成边
-  const edges = relationships.map(rel => {
-    const isParent = rel.relation_type === 'father' || rel.relation_type === 'mother'
-    return {
-      id: `${rel.id}`,
-      source: rel.person_a_id,
-      target: rel.person_b_id,
-      label: relationLabels[rel.relation_type],
-      type: isParent ? 'smoothstep' : 'straight',
-      animated: isParent,
-      style: { 
-        stroke: isParent ? '#C9A84C' : '#FF6B6B', 
-        strokeWidth: 2,
-        strokeDasharray: isParent ? '' : '5,5' 
-      },
-      labelStyle: { fill: '#5C3D2E', fontWeight: 600, fontSize: 10 },
-      labelBgStyle: { fill: '#FAF7F2', fillOpacity: 0.9 }
+  // 4. 执行布局
+  let currentX = 0
+  roots.forEach(root => {
+    if (!processed.has(root.id)) {
+      currentX += layoutSubtree(root.id, currentX, 0) + horizontalGap * 2
     }
   })
 
