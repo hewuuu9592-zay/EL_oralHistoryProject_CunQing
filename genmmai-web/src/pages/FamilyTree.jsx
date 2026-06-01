@@ -94,6 +94,9 @@ const buildTree = (persons, relationships) => {
   const trueRoots = roots.filter(r => { 
     const sid = spouseOf[r.id] 
     if (!sid) return true 
+    // 如果配偶有父母，那么配偶不是根节点，该节点应作为配偶被拉入树中，而不是作为根节点
+    if (parentsOf[sid] && parentsOf[sid].length > 0) return false
+    // 如果双方都没有父母，则按 ID 排序选一个作为主根，避免重复
     return !roots.some(ro => ro.id === sid) || r.id < sid 
   }) 
   
@@ -105,13 +108,23 @@ const buildTree = (persons, relationships) => {
     const spouseId = spouseOf[personId] 
     if (spouseId) placed.add(spouseId) 
     
+    // 查找子嗣：
+    // 1. 匹配双亲 (personId + spouseId)
+    // 2. 匹配单亲 (只有 personId)
     const pairKey = [personId, spouseId].filter(Boolean).sort().join('_') 
-    const childrenIds = familyChildren[pairKey] || [] 
+    const singleKey = String(personId)
+    
+    const childrenIds = [
+      ...(familyChildren[pairKey] || []),
+      ...(spouseId ? [] : (familyChildren[singleKey] || [])) 
+    ]
+    // 去重
+    const uniqueChildrenIds = Array.from(new Set(childrenIds))
     
     return { 
       bloodId: personId, 
       spouseId: spouseId || null, 
-      children: childrenIds.map(buildNode).filter(Boolean) 
+      children: uniqueChildrenIds.map(buildNode).filter(Boolean) 
     } 
   } 
   
@@ -278,19 +291,21 @@ const FamilyTree = () => {
           </button>
         </div>
       ) : (
-        <div className="family-tree pt-24 pb-32">
-          <ul>
-            {tree.map(node => (
-              <FamilyNode 
-                key={node.bloodId} 
-                node={node} 
-                personsMap={personsMap} 
-                onEdit={handleEditPerson} 
-                onDelete={handleDeletePerson} 
-                navigate={navigate} 
-              />
-            ))}
-          </ul>
+        <div className="family-tree-container pt-24 pb-32 overflow-auto">
+          <div className="family-tree">
+            <ul>
+              {tree.map(node => (
+                <FamilyNode 
+                  key={node.bloodId} 
+                  node={node} 
+                  personsMap={personsMap} 
+                  onEdit={handleEditPerson} 
+                  onDelete={handleDeletePerson} 
+                  navigate={navigate} 
+                />
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 

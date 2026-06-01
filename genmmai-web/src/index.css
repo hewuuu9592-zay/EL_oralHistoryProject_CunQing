@@ -9,10 +9,22 @@
   padding: 0; 
   position: relative; 
 } 
-.family-tree { text-align: center; padding: 20px; overflow: auto; } 
+.family-tree { 
+  text-align: center; 
+  padding: 20px; 
+  overflow: auto; 
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-width: 100%;
+} 
+.family-tree > ul {
+  display: inline-block;
+  white-space: nowrap;
+}
 .family-tree li { 
   display: table-cell; 
-  padding: 16px 8px 0; 
+  padding: 20px 10px 0; 
   vertical-align: top; 
   position: relative; 
 } 
