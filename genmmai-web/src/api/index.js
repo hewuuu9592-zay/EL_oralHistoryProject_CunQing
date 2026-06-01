@@ -7,6 +7,7 @@ const api = axios.create({
 export const getPersons = () => api.get('/persons');
 export const createPerson = (data) => api.post('/persons', data);
 export const getPerson = (id) => api.get(`/persons/${id}`);
+export const getRelationships = () => api.get('/relationships');
 export const createRelationship = (data) => api.post('/relationships', data);
 export const getPersonStories = (id) => api.get(`/persons/${id}/stories`);
 export const createStory = (data) => api.post('/stories', data);

@@ -75,6 +75,11 @@ def read_person(id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Person not found")
     return db_person
 
+@app.get("/relationships", response_model=List[dict])
+def read_relationships(db: Session = Depends(get_db)):
+    rels = db.query(models.Relationship).all()
+    return [{"id": r.id, "person1_id": r.person1_id, "person2_id": r.person2_id, "relationship_type": r.relationship_type} for r in rels]
+
 @app.post("/relationships")
 def create_relationship(rel: RelationshipCreate, db: Session = Depends(get_db)):
     db_rel = models.Relationship(**rel.dict())
