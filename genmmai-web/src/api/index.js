@@ -18,5 +18,13 @@ export const getPersonStoryThemes = (id) => api.get(`/persons/${id}/stories/them
 export const getSuggestQuestion = (id) => api.get(`/persons/${id}/suggest-question`);
 export const createStory = (data) => api.post('/stories', data);
 export const getStory = (id) => api.get(`/stories/${id}`);
+export const uploadAndProcessAudio = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post('/stories/process', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+};
+export const createStoryPerson = (data) => api.post('/story-persons', data);
 
 export default api;

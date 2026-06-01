@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List, Optional
@@ -287,6 +287,37 @@ def create_story_person(sp: StoryPersonCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_sp)
     return db_sp
+
+
+@app.post("/stories/process")
+def process_audio(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    上传音频并进行处理：转录、分析主题和年份
+    由于没有实际 AI 服务，返回模拟数据
+    """
+    # 读取文件内容（如果有需要可以保存）
+    file_content = file.file.read() if file else None
+
+    # 实际项目中这里会调用语音识别 API 和 NLP 分析
+    # 现在返回模拟数据
+    sample_transcripts = [
+        "那是1965年的夏天，我还在村里上小学，放学和小伙伴一起去河边抓鱼...",
+        "我记得小时候家里很穷，但父母总是把最好的留给我们...",
+        "后来改革开放了，我去了城里打工，那是1980年的事情...",
+        "我和老伴是1968年认识的，那会儿都在生产队劳动...",
+    ]
+    import random
+    transcript = random.choice(sample_transcripts)
+    suggested_themes = random.sample(THEMES, k=random.randint(1, 2))
+    suggested_year = random.randint(1950, 2000)
+
+    return {
+        "transcript": transcript,
+        "suggested_themes": suggested_themes,
+        "suggested_year": suggested_year,
+        "summary": transcript[:30] + "...",
+    }
+
 
 if __name__ == "__main__":
     import uvicorn

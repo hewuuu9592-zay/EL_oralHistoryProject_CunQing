@@ -1,15 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getPerson, getSuggestQuestion } from '../api';
+import { getPerson, getPersons, getSuggestQuestion, uploadAndProcessAudio, createStory, createStoryPerson } from '../api';
 
 const DEFAULT_QUESTION = "您有什么想留给后代的故事吗？";
+
+const THEMES = [
+  { name: '家乡记忆', emoji: '🏠' },
+  { name: '工作岁月', emoji: '💼' },
+  { name: '爱情婚姻', emoji: '💕' },
+  { name: '历史亲历', emoji: '📜' },
+  { name: '家族传承', emoji: '🌳' },
+  { name: '童年往事', emoji: '🧒' },
+  { name: '其他', emoji: '📝' },
+];
 
 const RecordStory = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const personId = searchParams.get('personId');
   const [person, setPerson] = useState(null);
+  const [persons, setPersons] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // 阶段：'record' | 'confirm'
+  const [stage, setStage] = useState('record');
 
   // AI 提问状态
   const [question, setQuestion] = useState('');
@@ -21,11 +35,20 @@ const RecordStory = () => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [error, setError] = useState(null);
 
+  // 确认表单状态
+  const [transcript, setTranscript] = useState('');
+  const [year, setYear] = useState('');
+  const [selectedThemes, setSelectedThemes] = useState([]);
+  const [selectedPersons, setSelectedPersons] = useState([]);
+  const [processing, setProcessing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   // Refs
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
   const audioRef = useRef(null);
+  const audioBlobRef = useRef(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -34,10 +57,14 @@ const RecordStory = () => {
         return;
       }
       try {
-        const response = await getPerson(personId);
-        setPerson(response.data);
+        const [personRes, personsRes] = await Promise.all([
+          getPerson(personId),
+          getPersons(),
+        ]);
+        setPerson(personRes.data);
+        setPersons(personsRes.data || []);
       } catch (err) {
-        console.error('获取人物信息失败:', err);
+        console.error('获取数据失败:', err);
       } finally {
         setLoading(false);
       }
@@ -60,10 +87,10 @@ const RecordStory = () => {
       }
     };
 
-    if (personId) {
+    if (personId && stage === 'record') {
       fetchQuestion();
     }
-  }, [personId]);
+  }, [personId, stage]);
 
   const refreshQuestion = async () => {
     setQuestionLoading(true);
@@ -100,6 +127,7 @@ const RecordStory = () => {
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        audioBlobRef.current = blob;
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
         stream.getTracks().forEach(track => track.stop());
@@ -109,7 +137,6 @@ const RecordStory = () => {
       setIsRecording(true);
       setRecordingTime(0);
 
-      // 开始计时
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
@@ -141,7 +168,90 @@ const RecordStory = () => {
       setAudioUrl(null);
       setRecordingTime(0);
       chunksRef.current = [];
+      audioBlobRef.current = null;
     }
+  };
+
+  const handleGoToConfirm = async () => {
+    setProcessing(true);
+    try {
+      // 上传音频并处理
+      const response = await uploadAndProcessAudio(audioBlobRef.current);
+      const data = response.data;
+
+      setTranscript(data.transcript || '');
+      setYear(data.suggested_year ? String(data.suggested_year) : '');
+      setSelectedThemes(data.suggested_themes || []);
+
+      // 默认选中当前人物
+      setSelectedPersons([personId]);
+
+      setStage('confirm');
+    } catch (err) {
+      console.error('处理音频失败:', err);
+      // 仍然进入确认阶段，但数据为空
+      setSelectedThemes([]);
+      setSelectedPersons([personId]);
+      setStage('confirm');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const toggleTheme = (themeName) => {
+    setSelectedThemes(prev =>
+      prev.includes(themeName)
+        ? prev.filter(t => t !== themeName)
+        : [...prev, themeName]
+    );
+  };
+
+  const togglePerson = (pId) => {
+    if (pId === personId) return; // 当前人物不可取消
+    setSelectedPersons(prev =>
+      prev.includes(pId)
+        ? prev.filter(id => id !== pId)
+        : [...prev, pId]
+    );
+  };
+
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+
+    try {
+      // 1. 创建故事
+      const storyRes = await createStory({
+        transcript: transcript,
+        summary: transcript?.slice(0, 50) || '',
+        year: year ? parseInt(year) : null,
+        theme: selectedThemes[0] || null,
+        person_ids: JSON.stringify(selectedPersons),
+      });
+
+      const storyId = storyRes.data.id;
+
+      // 2. 创建故事人物关联
+      for (const pId of selectedPersons) {
+        await createStoryPerson({
+          story_id: storyId,
+          person_id: pId,
+          is_protagonist: pId === personId,
+        });
+      }
+
+      // 跳转回人物详情页
+      navigate(`/person/${personId}`);
+    } catch (err) {
+      console.error('保存故事失败:', err);
+      alert('保存失败，请重试');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getNameInitial = (name) => {
+    return name ? name.charAt(0) : '?';
   };
 
   if (loading) {
@@ -152,6 +262,125 @@ const RecordStory = () => {
     );
   }
 
+  // ===== 确认阶段 =====
+  if (stage === 'confirm') {
+    return (
+      <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
+        {/* 顶部导航 */}
+        <div className="bg-white border-b border-[#E5DED3] px-4 py-4">
+          <div className="max-w-md mx-auto flex items-center justify-between">
+            <button
+              onClick={() => setStage('record')}
+              className="text-[#4A3728] hover:opacity-70"
+            >
+              ← 返回
+            </button>
+            <span className="text-[#4A3728] font-medium">确认标注</span>
+            <div className="w-12" />
+          </div>
+        </div>
+
+        {/* 处理中状态 */}
+        {processing && (
+          <div className="bg-yellow-50 border border-yellow-200 mx-4 mt-4 p-3 rounded-lg">
+            <p className="text-yellow-700 text-sm text-center">AI 正在处理录音...</p>
+          </div>
+        )}
+
+        {/* 表单内容 */}
+        <div className="flex-1 overflow-auto p-4">
+          <div className="max-w-md mx-auto space-y-4">
+            {/* 转录文字 */}
+            <div>
+              <label className="text-xs text-gray-500">AI 转录结果（可修改）</label>
+              <textarea
+                value={transcript}
+                onChange={(e) => setTranscript(e.target.value)}
+                placeholder="请输入或修改故事内容..."
+                className="w-full h-32 p-3 mt-1 border border-[#E5DED3] rounded-lg resize-none focus:outline-none focus:border-[#D4A574]"
+              />
+            </div>
+
+            {/* 故事年份 */}
+            <div>
+              <label className="text-xs text-gray-500">故事年份</label>
+              <input
+                type="number"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                placeholder="故事发生在哪一年？（如1965）"
+                className="w-full p-3 mt-1 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574]"
+              />
+            </div>
+
+            {/* 主题标签 */}
+            <div>
+              <label className="text-xs text-gray-500">主题标签（多选）</label>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {THEMES.map(({ name, emoji }) => (
+                  <button
+                    key={name}
+                    onClick={() => toggleTheme(name)}
+                    className={`px-3 py-1.5 rounded-full text-sm ${
+                      selectedThemes.includes(name)
+                        ? 'bg-[#4A3728] text-white'
+                        : 'bg-white border border-[#E5DED3] text-[#4A3728]'
+                    }`}
+                  >
+                    {emoji} {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 涉及人物 */}
+            <div>
+              <label className="text-xs text-gray-500">涉及人物（多选）</label>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {persons.map((p) => {
+                  const isSelected = selectedPersons.includes(p.id);
+                  const isCurrentPerson = p.id === personId;
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => !isCurrentPerson && togglePerson(p.id)}
+                      className={`flex items-center gap-2 px-2 py-1 rounded-lg cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#4A3728] text-white'
+                          : 'bg-white border border-[#E5DED3]'
+                      } ${isCurrentPerson ? 'cursor-not-allowed opacity-80' : ''}`}
+                    >
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-[#D4A574] text-white'
+                      }`}>
+                        {getNameInitial(p.name)}
+                      </div>
+                      <span className="text-sm">{p.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 底部按钮 */}
+        <div className="bg-white border-t border-[#E5DED3] p-4">
+          <div className="max-w-md mx-auto">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full py-3 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738] disabled:opacity-50"
+            >
+              {saving ? '保存中...' : '保存故事'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== 录音阶段 =====
   return (
     <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
       {/* 顶部导航 */}
@@ -178,24 +407,19 @@ const RecordStory = () => {
       {/* AI 引导问题卡片 */}
       <div className="px-4 mt-4">
         <div className="max-w-md mx-auto bg-[#FFFDF5] border-l-4 border-[#D4A574] rounded-r-lg p-4 relative">
-          {/* 标签 */}
           <p className="text-xs text-gray-500 mb-1">今天可以聊聊：</p>
-
-          {/* 问题内容 */}
           {questionLoading ? (
             <p className="text-[#4A3728]">AI 正在思考问题...</p>
           ) : (
-            <p className="text-base text-[#4A3728] pr-8">{question}</p>
-          )}
-
-          {/* 换一个问题按钮 */}
-          {!questionLoading && (
-            <button
-              onClick={refreshQuestion}
-              className="absolute top-4 right-4 text-sm text-[#D4A574] hover:opacity-70"
-            >
-              换一个问题
-            </button>
+            <>
+              <p className="text-base text-[#4A3728] pr-16">{question}</p>
+              <button
+                onClick={refreshQuestion}
+                className="absolute top-4 right-4 text-sm text-[#D4A574] hover:opacity-70"
+              >
+                换一个问题
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -209,14 +433,12 @@ const RecordStory = () => {
 
       {/* 录音区域 */}
       <div className="flex-1 flex flex-col items-center justify-center p-8">
-        {/* 计时器 */}
         {(isRecording || audioUrl) && (
           <div className="text-3xl font-mono text-[#4A3728] mb-8">
             {formatTime(recordingTime)}
           </div>
         )}
 
-        {/* 录音按钮 */}
         {!audioUrl && (
           <button
             onClick={handleRecordToggle}
@@ -239,16 +461,11 @@ const RecordStory = () => {
         )}
 
         {!isRecording && !audioUrl && (
-          <p className="mt-6 text-[#6B4F35]">
-            点击开始录音
-          </p>
+          <p className="mt-6 text-[#6B4F35]">点击开始录音</p>
         )}
 
-        {/* 录音中提示 */}
         {isRecording && (
-          <p className="mt-6 text-red-500 font-medium">
-            录音中...
-          </p>
+          <p className="mt-6 text-red-500 font-medium">录音中...</p>
         )}
 
         {/* 录音预览和按钮 */}
@@ -264,10 +481,11 @@ const RecordStory = () => {
                 重新录制
               </button>
               <button
-                onClick={() => alert('下一步')}
-                className="flex-1 py-3 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738]"
+                onClick={handleGoToConfirm}
+                disabled={processing}
+                className="flex-1 py-3 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738] disabled:opacity-50"
               >
-                下一步
+                {processing ? '处理中...' : '下一步'}
               </button>
             </div>
           </div>
