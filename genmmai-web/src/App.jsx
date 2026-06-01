@@ -1,24 +1,21 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import FamilyTree from './pages/FamilyTree';
-import PersonCard from './pages/PersonCard';
-import StoryDetail from './pages/StoryDetail';
-import RecordStory from './pages/RecordStory';
-import './App.css';
+import { Routes, Route } from 'react-router-dom'
+import FamilyTree from './pages/FamilyTree'
+import PersonCard from './pages/PersonCard'
+import StoryDetail from './pages/StoryDetail'
+import RecordStory from './pages/RecordStory'
+import './App.css'
 
 function App() {
   return (
-    <Router>
-      <div className="min-h-screen bg-[#F5F1E9]">
-        <Routes>
-          <Route path="/" element={<FamilyTree />} />
-          <Route path="/person/:id" element={<PersonCard />} />
-          <Route path="/story/:id" element={<StoryDetail />} />
-          <Route path="/record" element={<RecordStory />} />
-        </Routes>
-      </div>
-    </Router>
-  );
+    <div className="min-h-screen bg-[#F5F1E9]">
+      <Routes>
+        <Route path="/" element={<FamilyTree />} />
+        <Route path="/person/:id" element={<PersonCard />} />
+        <Route path="/story/:id" element={<StoryDetail />} />
+        <Route path="/record" element={<RecordStory />} />
+      </Routes>
+    </div>
+  )
 }
 
-export default App;
+export default App
