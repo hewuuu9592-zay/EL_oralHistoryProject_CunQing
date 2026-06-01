@@ -88,101 +88,124 @@ const relationLabels = {
   other: '其他',
 }
 
-// 简单的手动布局：按关系层级 horizontal 排列
+// 改进的布局算法：严格按辈分分层，配偶对齐
 const getLayoutedElements = (persons, relationships) => {
   if (!persons.length) return { nodes: [], edges: [] }
 
   const nodeWidth = 140
   const nodeHeight = 100
-  const horizontalGap = 60
-  const verticalGap = 80
+  const horizontalGap = 80
+  const verticalGap = 150
 
-  // 构建父子关系图，找最老的一辈
-  const childToParents = {}
-  const parentToChildren = {}
+  const personDepth = {}
+  
+  // 1. 构建关系映射
+  const childrenOf = {} // 父母 -> 子女
+  const spouseOf = {} // 配偶 -> 配偶
+  const parentsOf = {} // 子女 -> [父母]
+  const hasParent = new Set()
 
   relationships.forEach(rel => {
     if (rel.relation_type === 'father' || rel.relation_type === 'mother') {
-      childToParents[rel.person_b_id] = rel.person_a_id
-      if (!parentToChildren[rel.person_a_id]) parentToChildren[rel.person_a_id] = []
-      parentToChildren[rel.person_a_id].push(rel.person_b_id)
+      if (!childrenOf[rel.person_a_id]) childrenOf[rel.person_a_id] = []
+      childrenOf[rel.person_a_id].push(rel.person_b_id)
+      
+      if (!parentsOf[rel.person_b_id]) parentsOf[rel.person_b_id] = []
+      parentsOf[rel.person_b_id].push(rel.person_a_id)
+      hasParent.add(rel.person_b_id)
+    } else if (rel.relation_type === 'spouse') {
+      spouseOf[rel.person_a_id] = rel.person_b_id
+      spouseOf[rel.person_b_id] = rel.person_a_id
     }
   })
 
-  // 找祖先（是父母但不是子女的人）
-  const roots = persons.filter(p => !childToParents[p.id]).map(p => p.id)
-
-  // BFS 分层
-  const levels = {}
-  const visited = new Set()
-
-  const bfs = (startId, level) => {
-    const queue = [[startId, level]]
-    while (queue.length > 0) {
-      const [id, gen] = queue.shift()
-      if (visited.has(id)) continue
-      visited.add(id)
-
-      if (!levels[gen]) levels[gen] = []
-      levels[gen].push(id)
-
-      // 添加子女
-      if (parentToChildren[id]) {
-        parentToChildren[id].forEach(childId => {
-          queue.push([childId, gen + 1])
-        })
+  // 2. 递归计算深度（辈分）
+  const computeDepth = (id, currentDepth, visited = new Set()) => {
+    if (visited.has(id)) return
+    visited.add(id)
+    
+    // 设置当前深度（取最大值以应对复杂交错关系）
+    personDepth[id] = Math.max(personDepth[id] || 0, currentDepth)
+    
+    // 配偶强制同深度
+    if (spouseOf[id]) {
+      const spouseId = spouseOf[id]
+      personDepth[spouseId] = personDepth[id]
+      // 递归处理配偶的子女（防止配偶是后来加入的）
+      if (childrenOf[spouseId]) {
+        childrenOf[spouseId].forEach(childId => computeDepth(childId, currentDepth + 1, visited))
       }
+    }
+
+    // 处理子女
+    if (childrenOf[id]) {
+      childrenOf[id].forEach(childId => computeDepth(childId, currentDepth + 1, visited))
     }
   }
 
-  // 从每个根开始遍历
-  roots.forEach(rootId => bfs(rootId, 0))
+  // 从祖先节点开始遍历
+  const roots = persons.filter(p => !hasParent.has(p.id))
+  roots.forEach(root => computeDepth(root.id, 0))
 
-  // 处理未分配的（如配偶关系连接的）
+  // 处理未被遍历到的孤立节点
   persons.forEach(p => {
-    if (!visited.has(p.id)) {
-      const gen = Object.keys(levels).length
-      if (!levels[gen]) levels[gen] = []
-      levels[gen].push(p.id)
-    }
+    if (personDepth[p.id] === undefined) personDepth[p.id] = 0
   })
 
-  // 生成节点
+  // 3. 按深度组织节点
+  const levels = {}
+  persons.forEach(p => {
+    const d = personDepth[p.id]
+    if (!levels[d]) levels[d] = []
+    levels[d].push(p.id)
+  })
+
+  // 4. 生成节点坐标
   const nodes = []
-  Object.entries(levels).forEach(([level, personIds]) => {
-    const totalWidth = personIds.length * nodeWidth + (personIds.length - 1) * horizontalGap
+  Object.entries(levels).forEach(([depth, ids]) => {
+    const d = parseInt(depth)
+    // 排序：尝试让配偶靠在一起
+    const sortedIds = [...ids].sort((a, b) => {
+      if (spouseOf[a] === b) return -1
+      return 0
+    })
+
+    const totalWidth = sortedIds.length * nodeWidth + (sortedIds.length - 1) * horizontalGap
     const startX = -totalWidth / 2
 
-    personIds.forEach((personId, idx) => {
-      const person = persons.find(p => p.id === personId)
-      if (!person) return
-
+    sortedIds.forEach((id, idx) => {
+      const person = persons.find(p => p.id === id)
       nodes.push({
-        id: person.id,
+        id: id,
         type: 'person',
-        position: {
-          x: startX + idx * (nodeWidth + horizontalGap),
-          y: parseInt(level) * (nodeHeight + verticalGap),
+        position: { 
+          x: startX + idx * (nodeWidth + horizontalGap), 
+          y: d * verticalGap 
         },
-        data: { person },
+        data: { person }
       })
     })
   })
 
-  // 生成边
-  const edges = relationships.map(rel => ({
-    id: `${rel.id}`,
-    source: rel.person_a_id,
-    target: rel.person_b_id,
-    label: relationLabels[rel.relation_type] || rel.relation_type,
-    type: 'smoothstep',
-    animated: rel.relation_type === 'father' || rel.relation_type === 'mother',
-    style: { stroke: '#C9A84C', strokeWidth: 2 },
-    labelStyle: { fill: '#5C3D2E', fontWeight: 600 },
-    labelBgStyle: { fill: '#FAF7F2', fillOpacity: 0.9 },
-    labelBgPadding: [4, 2],
-    labelBgBorderRadius: 4,
-  }))
+  // 5. 生成边
+  const edges = relationships.map(rel => {
+    const isParent = rel.relation_type === 'father' || rel.relation_type === 'mother'
+    return {
+      id: `${rel.id}`,
+      source: rel.person_a_id,
+      target: rel.person_b_id,
+      label: relationLabels[rel.relation_type],
+      type: isParent ? 'smoothstep' : 'straight',
+      animated: isParent,
+      style: { 
+        stroke: isParent ? '#C9A84C' : '#FF6B6B', 
+        strokeWidth: 2,
+        strokeDasharray: isParent ? '' : '5,5' 
+      },
+      labelStyle: { fill: '#5C3D2E', fontWeight: 600, fontSize: 10 },
+      labelBgStyle: { fill: '#FAF7F2', fillOpacity: 0.9 }
+    }
+  })
 
   return { nodes, edges }
 }
@@ -231,13 +254,21 @@ const FamilyTree = () => {
           ...node.data,
           onEdit: (p) => {
             setEditingPerson(p)
+            // 查找该人现有的关系
+            const father = relsData.find(r => r.person_b_id === p.id && r.relation_type === 'father')?.person_a_id || ''
+            const mother = relsData.find(r => r.person_b_id === p.id && r.relation_type === 'mother')?.person_a_id || ''
+            const spouseRel = relsData.find(r => (r.person_a_id === p.id || r.person_b_id === p.id) && r.relation_type === 'spouse')
+            const spouse = spouseRel ? (spouseRel.person_a_id === p.id ? spouseRel.person_b_id : spouseRel.person_a_id) : ''
+
             setNewPerson({
               name: p.name,
               birth_year: p.birth_year || '',
               death_year: p.death_year || '',
               gender: p.gender || '男',
               bio: p.bio || '',
-              father_id: '', mother_id: '', spouse_id: '' // 编辑模式暂不处理初始关系修改
+              father_id: father,
+              mother_id: mother,
+              spouse_id: spouse
             })
             setShowAddModal(true)
           },
@@ -286,29 +317,38 @@ const FamilyTree = () => {
         bio: newPerson.bio
       }
       
+      let targetPersonId;
       if (editingPerson) {
         await updatePerson(editingPerson.id, payload)
+        targetPersonId = editingPerson.id
+        
+        // 编辑模式：清理旧关系以重新建立
+        const oldRels = relationships.filter(r => 
+          r.person_b_id === targetPersonId || 
+          (r.relation_type === 'spouse' && (r.person_a_id === targetPersonId || r.person_b_id === targetPersonId))
+        )
+        await Promise.all(oldRels.map(r => deleteRelationship(r.id)))
       } else {
         const res = await createPerson(payload)
-        const createdPerson = res.data
-
-        // 建立多重关系
-        const relPromises = []
-        if (newPerson.father_id) {
-          relPromises.push(createRelationship({ person_a_id: newPerson.father_id, person_b_id: createdPerson.id, relation_type: 'father' }))
-        }
-        if (newPerson.mother_id) {
-          relPromises.push(createRelationship({ person_a_id: newPerson.mother_id, person_b_id: createdPerson.id, relation_type: 'mother' }))
-        }
-        if (newPerson.spouse_id) {
-          relPromises.push(createRelationship({ person_a_id: newPerson.spouse_id, person_b_id: createdPerson.id, relation_type: 'spouse' }))
-        }
-        await Promise.all(relPromises)
+        targetPersonId = res.data.id
       }
+
+      // 建立/更新关系
+      const relPromises = []
+      if (newPerson.father_id) {
+        relPromises.push(createRelationship({ person_a_id: newPerson.father_id, person_b_id: targetPersonId, relation_type: 'father' }))
+      }
+      if (newPerson.mother_id) {
+        relPromises.push(createRelationship({ person_a_id: newPerson.mother_id, person_b_id: targetPersonId, relation_type: 'mother' }))
+      }
+      if (newPerson.spouse_id) {
+        relPromises.push(createRelationship({ person_a_id: newPerson.spouse_id, person_b_id: targetPersonId, relation_type: 'spouse' }))
+      }
+      await Promise.all(relPromises)
 
       setShowAddModal(false)
       setEditingPerson(null)
-      fetchData() // 刷新数据
+      fetchData()
     } catch (err) {
       console.error("提交失败:", err)
       alert("提交失败，请检查数据格式或后端服务")
@@ -441,21 +481,21 @@ const FamilyTree = () => {
                 ></textarea>
               </div>
 
-              {/* 初始关系建立 - 仅在新增时显示 */}
-              {!editingPerson && persons.length > 0 && (
+              {/* 关系设置 */}
+              {persons.length > 0 && (
                 <div className="p-3 bg-[#FAF7F2] rounded-lg border border-[#D4C4B0] space-y-2">
-                  <label className="block text-xs font-bold text-[#8B7355] uppercase mb-1">建立初始关系</label>
+                  <label className="block text-xs font-bold text-[#8B7355] uppercase mb-1">家族关系设置</label>
                   
                   <div className="grid grid-cols-1 gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500 w-12 text-right">父亲:</span>
                       <select 
-                        className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none"
+                        className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none bg-white"
                         value={newPerson.father_id}
                         onChange={e => setNewPerson({...newPerson, father_id: e.target.value})}
                       >
                         <option value="">(空)</option>
-                        {persons.filter(p => p.gender === '男').map(p => (
+                        {persons.filter(p => p.gender === '男' && p.id !== (editingPerson?.id)).map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                       </select>
@@ -464,12 +504,12 @@ const FamilyTree = () => {
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500 w-12 text-right">母亲:</span>
                       <select 
-                        className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none"
+                        className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none bg-white"
                         value={newPerson.mother_id}
                         onChange={e => setNewPerson({...newPerson, mother_id: e.target.value})}
                       >
                         <option value="">(空)</option>
-                        {persons.filter(p => p.gender === '女').map(p => (
+                        {persons.filter(p => p.gender === '女' && p.id !== (editingPerson?.id)).map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                       </select>
@@ -478,12 +518,12 @@ const FamilyTree = () => {
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500 w-12 text-right">配偶:</span>
                       <select 
-                        className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none"
+                        className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none bg-white"
                         value={newPerson.spouse_id}
                         onChange={e => setNewPerson({...newPerson, spouse_id: e.target.value})}
                       >
                         <option value="">(无)</option>
-                        {persons.map(p => (
+                        {persons.filter(p => p.id !== (editingPerson?.id)).map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                       </select>
