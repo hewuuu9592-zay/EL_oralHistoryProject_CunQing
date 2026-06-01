@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getPerson } from '../api';
+import { getPerson, getSuggestQuestion } from '../api';
+
+const DEFAULT_QUESTION = "您有什么想留给后代的故事吗？";
 
 const RecordStory = () => {
   const [searchParams] = useSearchParams();
@@ -8,6 +10,10 @@ const RecordStory = () => {
   const personId = searchParams.get('personId');
   const [person, setPerson] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // AI 提问状态
+  const [question, setQuestion] = useState('');
+  const [questionLoading, setQuestionLoading] = useState(true);
 
   // 录音状态
   const [isRecording, setIsRecording] = useState(false);
@@ -22,7 +28,7 @@ const RecordStory = () => {
   const audioRef = useRef(null);
 
   useEffect(() => {
-    const fetchPerson = async () => {
+    const fetchData = async () => {
       if (!personId) {
         setLoading(false);
         return;
@@ -36,8 +42,41 @@ const RecordStory = () => {
         setLoading(false);
       }
     };
-    fetchPerson();
+    fetchData();
   }, [personId]);
+
+  // 获取 AI 引导问题
+  useEffect(() => {
+    const fetchQuestion = async () => {
+      setQuestionLoading(true);
+      try {
+        const response = await getSuggestQuestion(personId);
+        setQuestion(response.data?.question || DEFAULT_QUESTION);
+      } catch (err) {
+        console.error('获取引导问题失败:', err);
+        setQuestion(DEFAULT_QUESTION);
+      } finally {
+        setQuestionLoading(false);
+      }
+    };
+
+    if (personId) {
+      fetchQuestion();
+    }
+  }, [personId]);
+
+  const refreshQuestion = async () => {
+    setQuestionLoading(true);
+    try {
+      const response = await getSuggestQuestion(personId);
+      setQuestion(response.data?.question || DEFAULT_QUESTION);
+    } catch (err) {
+      console.error('获取引导问题失败:', err);
+      setQuestion(DEFAULT_QUESTION);
+    } finally {
+      setQuestionLoading(false);
+    }
+  };
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -133,6 +172,31 @@ const RecordStory = () => {
           <h1 className="text-xl font-bold text-[#4A3728]">
             为 {person?.name || '家族成员' } 录入故事
           </h1>
+        </div>
+      </div>
+
+      {/* AI 引导问题卡片 */}
+      <div className="px-4 mt-4">
+        <div className="max-w-md mx-auto bg-[#FFFDF5] border-l-4 border-[#D4A574] rounded-r-lg p-4 relative">
+          {/* 标签 */}
+          <p className="text-xs text-gray-500 mb-1">今天可以聊聊：</p>
+
+          {/* 问题内容 */}
+          {questionLoading ? (
+            <p className="text-[#4A3728]">AI 正在思考问题...</p>
+          ) : (
+            <p className="text-base text-[#4A3728] pr-8">{question}</p>
+          )}
+
+          {/* 换一个问题按钮 */}
+          {!questionLoading && (
+            <button
+              onClick={refreshQuestion}
+              className="absolute top-4 right-4 text-sm text-[#D4A574] hover:opacity-70"
+            >
+              换一个问题
+            </button>
+          )}
         </div>
       </div>
 

@@ -172,6 +172,30 @@ THEMES = [
     "家族传承", "童年往事", "其他"
 ]
 
+# 引导问题库
+SUGGEST_QUESTIONS = [
+    "您小时候最难忘的一件事是什么？",
+    "您是怎么认识现在的家人的？",
+    "您最喜欢的工作是什么？有什么回忆？",
+    "您搬过几次家？最怀念哪里？",
+    "您吃过最难忘的一顿饭是什么？",
+    "您有什么传给后代的话想说？",
+    "您年轻时的梦想是什么？实现了吗？",
+    "您这辈子最骄傲的事情是什么？",
+    "有什么让您大笑的趣事吗？",
+    "您最想给子孙后代讲什么故事？",
+]
+
+import random
+
+def get_suggest_question(person_name: str = None) -> str:
+    """根据人物信息生成引导问题"""
+    base_questions = SUGGEST_QUESTIONS.copy()
+    # 根据人物年龄和时代可以定制问题，暂时随机返回
+    random.shuffle(base_questions)
+    return base_questions[0]
+
+
 @app.get("/persons/{person_id}/stories", response_model=List[Story])
 def read_person_stories(person_id: str, db: Session = Depends(get_db)):
     """返回该人物相关的所有故事，按 year 升序排列"""
@@ -216,6 +240,20 @@ def get_person_story_themes(person_id: str, db: Session = Depends(get_db)):
             theme_counts["其他"] += 1
 
     return [{"theme": theme, "count": count} for theme, count in theme_counts.items()]
+
+
+@app.get("/persons/{person_id}/suggest-question")
+def suggest_question(person_id: str, db: Session = Depends(get_db)):
+    """返回引导问题"""
+    # 获取人物信息
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if person is None:
+        return {"question": "您有什么想留给后代的故事吗？"}
+
+    # 生成引导问题
+    question = get_suggest_question(person.name)
+    return {"question": question}
+
 
 # ============= Stories API =============
 

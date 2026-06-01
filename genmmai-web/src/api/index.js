@@ -15,6 +15,7 @@ export const createRelationship = (data) => api.post('/relationships', data);
 export const deleteRelationship = (id) => api.delete(`/relationships/${id}`);
 export const getPersonStories = (id) => api.get(`/persons/${id}/stories`);
 export const getPersonStoryThemes = (id) => api.get(`/persons/${id}/stories/themes`);
+export const getSuggestQuestion = (id) => api.get(`/persons/${id}/suggest-question`);
 export const createStory = (data) => api.post('/stories', data);
 export const getStory = (id) => api.get(`/stories/${id}`);
 
