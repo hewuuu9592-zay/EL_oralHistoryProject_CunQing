@@ -1,3 +1,103 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 族谱专用样式 */
+.family-tree, .family-tree ul, .family-tree li { 
+  list-style: none; 
+  margin: 0; 
+  padding: 0; 
+  position: relative; 
+} 
+.family-tree { text-align: center; padding: 20px; overflow: auto; } 
+.family-tree li { 
+  display: table-cell; 
+  padding: 16px 8px 0; 
+  vertical-align: top; 
+  position: relative; 
+} 
+/* 水平连线 */ 
+.family-tree li:before { 
+  content: ""; 
+  outline: solid 1px #C9A84C; 
+  position: absolute; 
+  left: 0; right: 0; top: 0; 
+} 
+.family-tree li:first-child:before { left: 50%; } 
+.family-tree li:last-child:before { right: 50%; } 
+
+/* 节点盒子 */ 
+.family-unit { 
+  display: inline-flex; 
+  flex-direction: row; 
+  align-items: flex-start; 
+  gap: 8px; 
+  border: 1.5px solid #D4C4B0; 
+  border-radius: 8px; 
+  background: white; 
+  padding: 4px; 
+  position: relative; 
+  margin-bottom: 8px; 
+  cursor: pointer; 
+} 
+.family-unit:hover { border-color: #C9A84C; box-shadow: 0 2px 8px rgba(0,0,0,0.1); } 
+
+/* 竖线：从节点向上连 */ 
+.family-unit:before { 
+  content: ""; 
+  outline: solid 1px #C9A84C; 
+  height: 16px; 
+  position: absolute; 
+  left: 50%; 
+  top: -17px; 
+} 
+
+/* 竖线：从节点向下连到子女 */ 
+.family-tree ul:before { 
+  content: ""; 
+  outline: solid 1px #C9A84C; 
+  height: 16px; 
+  position: absolute; 
+  left: 50%; 
+  top: -16px; 
+} 
+
+/* 单个人物卡片 */ 
+.person-card { 
+  width: 64px; 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  padding: 6px 4px; 
+  border-radius: 6px; 
+  transition: background 0.15s; 
+} 
+.person-card:hover { background: #FAF7F2; } 
+.person-card .avatar { 
+  width: 36px; height: 36px; 
+  border-radius: 50%; 
+  background: #C9A84C; 
+  display: flex; align-items: center; justify-content: center; 
+  font-size: 14px; color: white; font-weight: bold; 
+  margin-bottom: 4px; 
+  overflow: hidden; 
+} 
+.person-card .name { 
+  font-size: 12px; color: #5C3D2E; 
+  font-weight: 600; text-align: center; 
+  max-width: 60px; overflow: hidden; 
+  text-overflow: ellipsis; white-space: nowrap; 
+} 
+.person-card .years { 
+  font-size: 10px; color: #999; margin-top: 2px; 
+} 
+.person-card.male .avatar { background: #7BA7C9; } 
+.person-card.female .avatar { background: #C98B8B; } 
+
+/* 配偶之间的连线用虚线 */ 
+.spouse-divider { 
+  width: 1px; background: repeating-linear-gradient( 
+    to bottom, #FF6B6B 0px, #FF6B6B 4px, transparent 4px, transparent 8px 
+  ); 
+  align-self: stretch; margin: 8px 0; 
+}

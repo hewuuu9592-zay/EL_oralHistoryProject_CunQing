@@ -1,275 +1,127 @@
-import { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  ReactFlow,
-  Background,
-  Controls,
-  Handle,
-  Position,
-  useNodesState,
-  useEdgesState,
-} from '@xyflow/react'
-import '@xyflow/react/dist/style.css'
-import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson } from '../api'
+import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deleteRelationship } from '../api'
 
-// 自定义人物节点组件
-const PersonNode = ({ data }) => {
-  const navigate = useNavigate()
-  const { person, onEdit, onDelete } = data
+// 渲染单个人物卡片 
+const PersonCard = ({ person, onEdit, onDelete, navigate }) => { 
+  const lifeSpan = person.death_year 
+    ? `${person.birth_year || '?'}-${person.death_year}` 
+    : person.birth_year ? `${person.birth_year}+` : '' 
+  
+  return ( 
+    <div 
+      className={`person-card ${person.gender === '男' ? 'male' : person.gender === '女' ? 'female' : ''}`} 
+      onClick={(e) => { e.stopPropagation(); navigate(`/person/${person.id}`) }} 
+    > 
+      <div className="avatar"> 
+        {person.avatar_url 
+          ? <img src={person.avatar_url} alt={person.name} style={{width:'100%',height:'100%',objectFit:'cover'}} /> 
+          : person.name.charAt(0) 
+        } 
+      </div> 
+      <div className="name">{person.name}</div> 
+      {lifeSpan && <div className="years">{lifeSpan}</div>} 
+      <div className="card-actions" style={{display:'flex',gap:2,marginTop:2}}> 
+        <button onClick={e=>{e.stopPropagation();onEdit(person)}} 
+          style={{fontSize:10,padding:'1px 4px',border:'1px solid #D4C4B0',borderRadius:3,background:'white',cursor:'pointer'}}>✎</button> 
+        <button onClick={e=>{e.stopPropagation();onDelete(person.id)}} 
+          style={{fontSize:10,padding:'1px 4px',border:'1px solid #D4C4B0',borderRadius:3,background:'white',color:'red',cursor:'pointer'}}>✕</button> 
+      </div> 
+    </div> 
+  ) 
+} 
 
-  const handleClick = (e) => {
-    e.stopPropagation()
-    navigate(`/person/${person.id}`)
-  }
+// 渲染一个家庭单元（血缘节点 + 配偶 + 子女） 
+const FamilyNode = ({ node, personsMap, onEdit, onDelete, navigate }) => { 
+  const blood = personsMap[node.bloodId] 
+  const spouse = node.spouseId ? personsMap[node.spouseId] : null 
+  if (!blood) return null 
+  
+  return ( 
+    <li> 
+      <div className="family-unit"> 
+        <PersonCard person={blood} onEdit={onEdit} onDelete={onDelete} navigate={navigate} /> 
+        {spouse && <> 
+          <div className="spouse-divider" /> 
+          <PersonCard person={spouse} onEdit={onEdit} onDelete={onDelete} navigate={navigate} /> 
+        </>} 
+      </div> 
+      {node.children && node.children.length > 0 && ( 
+        <ul> 
+          {node.children.map(child => ( 
+            <FamilyNode 
+              key={child.bloodId} 
+              node={child} 
+              personsMap={personsMap} 
+              onEdit={onEdit} 
+              onDelete={onDelete} 
+              navigate={navigate} 
+            /> 
+          ))} 
+        </ul> 
+      )} 
+    </li> 
+  ) 
+} 
 
-  // 格式化生卒年
-  const lifeSpan = person.death_year
-    ? `${person.birth_year || '?'} - ${person.death_year}`
-    : person.birth_year
-      ? `${person.birth_year}+`
-      : ''
-
-  return (
-    <div
-      className="group relative w-[130px] bg-white rounded-lg shadow-md border-2 border-[#D4C4B0] p-3 flex flex-col items-center cursor-pointer hover:border-[#C9A84C] hover:shadow-lg transition-all"
-      onClick={handleClick}
-    >
-      <Handle type="target" position={Position.Top} className="!bg-[#5C3D2E]" />
-
-      {/* 操作按钮 - 悬浮显示 */}
-      <div className="absolute -top-2 -right-2 hidden group-hover:flex gap-1 z-20">
-        <button 
-          onClick={(e) => { e.stopPropagation(); onEdit(person); }}
-          className="p-1 bg-white border border-[#D4C4B0] rounded shadow-sm hover:bg-[#FAF7F2] text-blue-600 text-[10px]"
-        >
-          ✎
-        </button>
-        <button 
-          onClick={(e) => { e.stopPropagation(); onDelete(person.id); }}
-          className="p-1 bg-white border border-[#D4C4B0] rounded shadow-sm hover:bg-red-50 text-red-600 text-[10px]"
-        >
-          ✕
-        </button>
-      </div>
-
-      {/* 头像 */}
-      <div className="w-10 h-10 rounded-full bg-[#C9A84C] flex items-center justify-center mb-2 overflow-hidden">
-        {person.avatar_url ? (
-          <img src={person.avatar_url} alt={person.name} className="w-full h-full object-cover" />
-        ) : (
-          <span className="text-lg font-serif text-white">{person.name.charAt(0)}</span>
-        )}
-      </div>
-
-      {/* 姓名 */}
-      <div className="text-sm font-bold text-[#5C3D2E] text-center truncate w-full">
-        {person.name}
-      </div>
-
-      {/* 生卒年 */}
-      <div className="text-xs text-gray-500 mt-1">
-        {lifeSpan}
-      </div>
-
-      <Handle type="source" position={Position.Bottom} className="!bg-[#5C3D2E]" />
-    </div>
-  )
-}
-
-const nodeTypes = { person: PersonNode }
-
-// 关系类型标签映射
-const relationLabels = {
-  father: '父亲',
-  mother: '母亲',
-  spouse: '配偶',
-  sibling: '兄弟姐妹',
-  child: '子女',
-  other: '其他',
-}
-
-// 改进的布局算法：以血缘为核心，合并关系线，居中对齐
-const getLayoutedElements = (persons, relationships) => {
-  if (!persons.length) return { nodes: [], edges: [] }
-
-  const nodeWidth = 140
-  const horizontalGap = 100
-  const verticalGap = 200 // 增加高度给合并线留空间
-
-  const nodes = []
-  const edges = []
-  const personDepth = {}
-  const processed = new Set()
-
-  // 1. 构建索引
-  const childrenOf = {} // "p1_id,p2_id" -> [child_ids]
-  const spouseOf = {} // p_id -> spouse_id
-  const parentsOf = {} // p_id -> [p1, p2]
-
-  relationships.forEach(rel => {
-    if (rel.relation_type === 'father' || rel.relation_type === 'mother') {
-      if (!parentsOf[rel.person_b_id]) parentsOf[rel.person_b_id] = []
-      parentsOf[rel.person_b_id].push(rel.person_a_id)
-    } else if (rel.relation_type === 'spouse') {
-      spouseOf[rel.person_a_id] = rel.person_b_id
-      spouseOf[rel.person_b_id] = rel.person_a_id
-    }
-  })
-
-  // 归一化父母对索引，确保 (A,B) 和 (B,A) 指向同一个家庭
-  persons.forEach(p => {
-    const parents = parentsOf[p.id] || []
-    if (parents.length > 0) {
-      // 只要有任何父母关系，就计入索引
-      const pairKey = parents.sort().join(',')
-      if (!childrenOf[pairKey]) childrenOf[pairKey] = []
-      childrenOf[pairKey].push(p.id)
-    }
-  })
-
-  // 2. 计算深度（辈分）
-  const roots = persons.filter(p => !(parentsOf[p.id] && parentsOf[p.id].length > 0))
-  const computeDepth = (id, d, visited = new Set()) => {
-    if (visited.has(id)) return
-    visited.add(id)
-    personDepth[id] = Math.max(personDepth[id] || 0, d)
-    const spouseId = spouseOf[id]
-    if (spouseId) personDepth[spouseId] = personDepth[id]
-
-    // 找到所有以该人为父母的孩子
-    persons.forEach(child => {
-      const parents = parentsOf[child.id] || []
-      if (parents.includes(id) || (spouseId && parents.includes(spouseId))) {
-        computeDepth(child.id, d + 1, visited)
-      }
-    })
-  }
-  roots.forEach(r => computeDepth(r.id, 0))
-
-  // 3. 递归布局函数：返回该子树占用的总宽度
-  const layoutSubtree = (personId, startX, depth) => {
-    if (processed.has(personId)) return 0
-    processed.add(personId)
-
-    const person = persons.find(p => p.id === personId)
-    const spouseId = spouseOf[personId]
-    const hasSpouse = spouseId && !processed.has(spouseId)
-    if (hasSpouse) processed.add(spouseId)
-
-    // 找到家庭的所有孩子
-    const pairKey = [personId, spouseId].filter(Boolean).sort().join(',')
-    const childrenIds = childrenOf[pairKey] || []
-
-    // 递归布局所有子树
-    let childrenTotalWidth = 0
-    if (childrenIds.length > 0) {
-      childrenIds.forEach((childId, idx) => {
-        childrenTotalWidth += layoutSubtree(childId, startX + childrenTotalWidth, depth + 1)
-        if (idx < childrenIds.length - 1) childrenTotalWidth += horizontalGap
-      })
-    }
-
-    // 确定本级宽度：血缘节点是核心，配偶靠边站
-    const selfWidth = nodeWidth 
-    const subtreeWidth = Math.max(selfWidth, childrenTotalWidth)
-
-    // 核心逻辑：血缘节点居中对齐其所有子嗣的中轴
-    const bloodlineX = startX + (subtreeWidth - selfWidth) / 2
+// 数据转换函数
+const buildTree = (persons, relationships) => { 
+  const parentsOf = {} 
+  const spouseOf = {} 
+  const familyChildren = {} 
+  
+  relationships.forEach(rel => { 
+    if (rel.relation_type === 'father' || rel.relation_type === 'mother') { 
+      if (!parentsOf[rel.person_b_id]) parentsOf[rel.person_b_id] = [] 
+      parentsOf[rel.person_b_id].push(rel.person_a_id) 
+    } 
+    if (rel.relation_type === 'spouse') { 
+      spouseOf[rel.person_a_id] = rel.person_b_id 
+      spouseOf[rel.person_b_id] = rel.person_a_id 
+    } 
+  }) 
+  
+  persons.forEach(p => { 
+    const parents = parentsOf[p.id] 
+    if (parents && parents.length > 0) { 
+      const key = [...parents].sort().join('_') 
+      if (!familyChildren[key]) familyChildren[key] = [] 
+      if (!familyChildren[key].includes(p.id)) familyChildren[key].push(p.id) 
+    } 
+  }) 
+  
+  const roots = persons.filter(p => !parentsOf[p.id] || parentsOf[p.id].length === 0) 
+  const trueRoots = roots.filter(r => { 
+    const sid = spouseOf[r.id] 
+    if (!sid) return true 
+    return !roots.some(ro => ro.id === sid) || r.id < sid 
+  }) 
+  
+  const placed = new Set() 
+  const buildNode = (personId) => { 
+    if (placed.has(personId)) return null 
+    placed.add(personId) 
     
-    // 放置血缘节点
-    nodes.push({
-      id: personId,
-      type: 'person',
-      position: { x: bloodlineX, y: depth * verticalGap },
-      data: { person }
-    })
-
-    // 放置配偶（放在血缘节点右侧，不参与中轴计算，保证垂直对齐）
-    if (hasSpouse) {
-      const spouse = persons.find(p => p.id === spouseId)
-      nodes.push({
-        id: spouseId,
-        type: 'person',
-        position: { x: bloodlineX + nodeWidth + 30, y: depth * verticalGap },
-        data: { person: spouse }
-      })
-      // 夫妻连线
-      edges.push({
-        id: `spouse-${personId}-${spouseId}`,
-        source: personId,
-        target: spouseId,
-        label: '配偶',
-        style: { stroke: '#FF6B6B', strokeDasharray: '5,5' },
-        type: 'straight'
-      })
-    }
-
-    // 绘制合并的关系线（Junction 模式）
-    if (childrenIds.length > 0) {
-      // 家族交汇点（Junction）：位于父母和孩子之间
-      const junctionId = `junction-${pairKey}`
-      // 交汇点位于父母（血缘+配偶）的中点下方
-      const parentMidX = hasSpouse ? (bloodlineX + nodeWidth + 15) : (bloodlineX + nodeWidth / 2)
-      const junctionY = depth * verticalGap + 120
-
-      nodes.push({
-        id: junctionId,
-        position: { x: parentMidX, y: junctionY },
-        data: {},
-        style: { width: 0, height: 0, opacity: 0 },
-        hidden: false // 改为不隐藏，但设置 opacity 0
-      })
-
-      // 父母 -> 交汇点
-      edges.push({
-        id: `p1-j-${personId}`,
-        source: personId,
-        target: junctionId,
-        type: 'smoothstep',
-        style: { stroke: '#C9A84C', strokeWidth: 2 }
-      })
-      if (hasSpouse) {
-        edges.push({
-          id: `p2-j-${spouseId}`,
-          source: spouseId,
-          target: junctionId,
-          type: 'smoothstep',
-          style: { stroke: '#C9A84C', strokeWidth: 2 }
-        })
-      }
-
-      // 交汇点 -> 所有孩子
-      childrenIds.forEach(childId => {
-        edges.push({
-          id: `j-c-${childId}`,
-          source: junctionId,
-          target: childId,
-          type: 'smoothstep',
-          style: { stroke: '#C9A84C', strokeWidth: 2 }
-        })
-      })
-    }
-
-    return subtreeWidth
-  }
-
-  // 4. 执行布局
-  let currentX = 0
-  roots.forEach(root => {
-    if (!processed.has(root.id)) {
-      currentX += layoutSubtree(root.id, currentX, 0) + horizontalGap * 2
-    }
-  })
-
-  return { nodes, edges }
+    const spouseId = spouseOf[personId] 
+    if (spouseId) placed.add(spouseId) 
+    
+    const pairKey = [personId, spouseId].filter(Boolean).sort().join('_') 
+    const childrenIds = familyChildren[pairKey] || [] 
+    
+    return { 
+      bloodId: personId, 
+      spouseId: spouseId || null, 
+      children: childrenIds.map(buildNode).filter(Boolean) 
+    } 
+  } 
+  
+  return trueRoots.map(r => buildNode(r.id)).filter(Boolean) 
 }
 
 const FamilyTree = () => {
   const navigate = useNavigate()
   const [persons, setPersons] = useState([])
   const [relationships, setRelationships] = useState([])
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingPerson, setEditingPerson] = useState(null)
@@ -284,6 +136,9 @@ const FamilyTree = () => {
     spouse_id: ''
   })
 
+  const personsMap = useMemo(() => Object.fromEntries(persons.map(p => [p.id, p])), [persons])
+  const tree = useMemo(() => buildTree(persons, relationships), [persons, relationships])
+
   // 加载数据
   const fetchData = async () => {
     try {
@@ -291,47 +146,8 @@ const FamilyTree = () => {
         getPersons(),
         getRelationships(),
       ])
-      const personsData = personsRes.data || []
-      const relsData = relsRes.data || []
-      setPersons(personsData)
-      setRelationships(relsData)
-
-      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-        personsData,
-        relsData
-      )
-
-      // 注入操作回调
-      const nodesWithActions = layoutedNodes.map(node => ({
-        ...node,
-        data: {
-          ...node.data,
-          onEdit: (p) => {
-            setEditingPerson(p)
-            // 查找该人现有的关系
-            const father = relsData.find(r => r.person_b_id === p.id && r.relation_type === 'father')?.person_a_id || ''
-            const mother = relsData.find(r => r.person_b_id === p.id && r.relation_type === 'mother')?.person_a_id || ''
-            const spouseRel = relsData.find(r => (r.person_a_id === p.id || r.person_b_id === p.id) && r.relation_type === 'spouse')
-            const spouse = spouseRel ? (spouseRel.person_a_id === p.id ? spouseRel.person_b_id : spouseRel.person_a_id) : ''
-
-            setNewPerson({
-              name: p.name,
-              birth_year: p.birth_year || '',
-              death_year: p.death_year || '',
-              gender: p.gender || '男',
-              bio: p.bio || '',
-              father_id: father,
-              mother_id: mother,
-              spouse_id: spouse
-            })
-            setShowAddModal(true)
-          },
-          onDelete: (id) => handleDeletePerson(id)
-        }
-      }))
-
-      setNodes(nodesWithActions)
-      setEdges(layoutedEdges)
+      setPersons(personsRes.data || [])
+      setRelationships(relsRes.data || [])
     } catch (error) {
       console.error('Failed to load data:', error)
     } finally {
@@ -342,6 +158,26 @@ const FamilyTree = () => {
   useEffect(() => {
     fetchData()
   }, [])
+
+  const handleEditPerson = (p) => {
+    setEditingPerson(p)
+    const father = relationships.find(r => r.person_b_id === p.id && r.relation_type === 'father')?.person_a_id || ''
+    const mother = relationships.find(r => r.person_b_id === p.id && r.relation_type === 'mother')?.person_a_id || ''
+    const spouseRel = relationships.find(r => (r.person_a_id === p.id || r.person_b_id === p.id) && r.relation_type === 'spouse')
+    const spouse = spouseRel ? (spouseRel.person_a_id === p.id ? spouseRel.person_b_id : spouseRel.person_a_id) : ''
+
+    setNewPerson({
+      name: p.name,
+      birth_year: p.birth_year || '',
+      death_year: p.death_year || '',
+      gender: p.gender || '男',
+      bio: p.bio || '',
+      father_id: father,
+      mother_id: mother,
+      spouse_id: spouse
+    })
+    setShowAddModal(true)
+  }
 
   const handleAddPerson = (e) => {
     e?.stopPropagation()
@@ -375,8 +211,6 @@ const FamilyTree = () => {
       if (editingPerson) {
         await updatePerson(editingPerson.id, payload)
         targetPersonId = editingPerson.id
-        
-        // 编辑模式：清理旧关系以重新建立
         const oldRels = relationships.filter(r => 
           r.person_b_id === targetPersonId || 
           (r.relation_type === 'spouse' && (r.person_a_id === targetPersonId || r.person_b_id === targetPersonId))
@@ -387,7 +221,6 @@ const FamilyTree = () => {
         targetPersonId = res.data.id
       }
 
-      // 建立/更新关系
       const relPromises = []
       if (newPerson.father_id) {
         relPromises.push(createRelationship({ person_a_id: newPerson.father_id, person_b_id: targetPersonId, relation_type: 'father' }))
@@ -410,7 +243,7 @@ const FamilyTree = () => {
   }
 
   return (
-    <div className="relative" style={{ width: '100%', height: '100vh', background: '#FAF7F2' }}>
+    <div className="relative min-h-screen bg-[#FAF7F2]">
       {/* 左上角 Logo */}
       <div className="absolute top-6 left-6 z-10">
         <h1 className="text-4xl font-serif text-[#5C3D2E]">根脉</h1>
@@ -421,13 +254,13 @@ const FamilyTree = () => {
         成员数：{persons.length}人
       </div>
 
-      {/* React Flow 画布 */}
+      {/* 族谱内容 */}
       {loading ? (
-        <div className="flex items-center justify-center h-full">
+        <div className="flex items-center justify-center h-screen">
           <div className="text-[#5C3D2E]">加载中...</div>
         </div>
       ) : persons.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-full">
+        <div className="flex flex-col items-center justify-center h-screen">
           <p className="text-[#5C3D2E] text-lg mb-4">从第一位家族成员开始</p>
           <button
             type="button"
@@ -445,18 +278,20 @@ const FamilyTree = () => {
           </button>
         </div>
       ) : (
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          nodeTypes={nodeTypes}
-          fitView
-          attributionPosition="bottom-left"
-        >
-          <Background color="#E5DFD3" gap={20} />
-          <Controls className="!bg-white !border-[#D4C4B0]" />
-        </ReactFlow>
+        <div className="family-tree pt-24 pb-32">
+          <ul>
+            {tree.map(node => (
+              <FamilyNode 
+                key={node.bloodId} 
+                node={node} 
+                personsMap={personsMap} 
+                onEdit={handleEditPerson} 
+                onDelete={handleDeletePerson} 
+                navigate={navigate} 
+              />
+            ))}
+          </ul>
+        </div>
       )}
 
       {/* 右下角添加按钮 */}
@@ -465,7 +300,7 @@ const FamilyTree = () => {
           type="button"
           onClick={(e) => handleAddPerson(e)}
           style={{
-            position: 'absolute',
+            position: 'fixed',
             bottom: '24px',
             right: '24px',
             width: '48px',
