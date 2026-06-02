@@ -124,6 +124,47 @@ class StoryPersonResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class PersonBrief(BaseModel):
+    """简短的人物信息"""
+    id: str
+    name: str
+    avatar_url: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+class StoryWithPersons(BaseModel):
+    """带人物列表的故事详情"""
+    id: str
+    audio_url: Optional[str] = None
+    transcript: Optional[str] = None
+    summary: Optional[str] = None
+    year: Optional[int] = None
+    decade: Optional[str] = None
+    theme: Optional[str] = None
+    created_at: Optional[datetime] = None
+    transcription_status: Optional[str] = "pending"
+    ai_tag_status: Optional[str] = "untagged"
+    persons: List[PersonBrief] = []
+    class Config:
+        from_attributes = True
+
+class StoryFullCreate(BaseModel):
+    """创建完整故事"""
+    audio_url: Optional[str] = None
+    transcript: Optional[str] = None
+    summary: Optional[str] = None
+    year: Optional[int] = None
+    decade: Optional[str] = None
+    theme: Optional[str] = None
+    person_ids: List[str] = []
+    protagonist_id: Optional[str] = None
+
+class StoryUpdate(BaseModel):
+    """更新故事"""
+    transcript: Optional[str] = None
+    year: Optional[int] = None
+    theme: Optional[str] = None
+
 # ============= API Endpoints =============
 
 @app.get("/persons", response_model=List[Person])
@@ -412,28 +453,100 @@ def create_story(story: StoryCreate, db: Session = Depends(get_db)):
     db.refresh(db_story)
     return db_story
 
+@app.post("/stories/full")
+def create_story_full(story: StoryFullCreate, db: Session = Depends(get_db)):
+    """创建完整故事（含人物关联）"""
+    # 1. 创建故事记录
+    db_story = models.Story(
+        audio_url=story.audio_url,
+        transcript=story.transcript,
+        summary=story.summary,
+        year=story.year,
+        decade=story.decade,
+        theme=story.theme,
+    )
+    db.add(db_story)
+    db.commit()
+    db.refresh(db_story)
+
+    # 2. 创建人物关联
+    protagonist_id = story.protagonist_id or (story.person_ids[0] if story.person_ids else None)
+    for pid in story.person_ids:
+        db_sp = models.StoryPerson(
+            story_id=db_story.id,
+            person_id=pid,
+            is_protagonist=(pid == protagonist_id)
+        )
+        db.add(db_sp)
+
+    db.commit()
+    return db_story
+
 @app.put("/stories/{story_id}", response_model=Story)
 def update_story(story_id: str, story: StoryCreate, db: Session = Depends(get_db)):
     """更新故事信息"""
     db_story = db.query(models.Story).filter(models.Story.id == story_id).first()
     if db_story is None:
         raise HTTPException(status_code=404, detail="故事不存在")
-    
+
     for key, value in story.model_dump().items():
         if value is not None:
             setattr(db_story, key, value)
-    
+
     db.commit()
     db.refresh(db_story)
     return db_story
 
-@app.get("/stories/{story_id}", response_model=Story)
-def read_story(story_id: str, db: Session = Depends(get_db)):
-    """返回单个故事详情"""
+@app.patch("/stories/{story_id}", response_model=Story)
+def patch_story(story_id: str, story_update: StoryUpdate, db: Session = Depends(get_db)):
+    """更新故事（支持 partial update）"""
     db_story = db.query(models.Story).filter(models.Story.id == story_id).first()
     if db_story is None:
         raise HTTPException(status_code=404, detail="故事不存在")
+
+    update_data = story_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        if value is not None:
+            setattr(db_story, key, value)
+
+    db.commit()
+    db.refresh(db_story)
     return db_story
+
+@app.get("/stories/{story_id}", response_model=StoryWithPersons)
+def read_story(story_id: str, db: Session = Depends(get_db)):
+    """返回单个故事详情（含人物列表）"""
+    db_story = db.query(models.Story).filter(models.Story.id == story_id).first()
+    if db_story is None:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    # 查询关联的人物
+    sp_records = db.query(models.StoryPerson).filter(
+        models.StoryPerson.story_id == story_id
+    ).all()
+    person_ids = [sp.person_id for sp in sp_records]
+
+    persons = []
+    if person_ids:
+        db_persons = db.query(models.Person).filter(models.Person.id.in_(person_ids)).all()
+        persons = [
+            PersonBrief(id=p.id, name=p.name, avatar_url=p.avatar_url)
+            for p in db_persons
+        ]
+
+    return StoryWithPersons(
+        id=db_story.id,
+        audio_url=db_story.audio_url,
+        transcript=db_story.transcript,
+        summary=db_story.summary,
+        year=db_story.year,
+        decade=db_story.decade,
+        theme=db_story.theme,
+        created_at=db_story.created_at,
+        transcription_status=db_story.transcription_status,
+        ai_tag_status=db_story.ai_tag_status,
+        persons=persons
+    )
 
 @app.post("/story-persons", response_model=StoryPersonResponse)
 def create_story_person(sp: StoryPersonCreate, db: Session = Depends(get_db)):
