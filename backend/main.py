@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -6,10 +6,17 @@ from typing import List, Optional
 import json
 import os
 import time
+import hashlib
+import hmac
+import base64
+import requests
+from dotenv import load_dotenv
 import models
 from database import SessionLocal, engine, get_db
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+
+load_dotenv()
 
 # Create tables
 models.Base.metadata.create_all(bind=engine)
@@ -73,6 +80,7 @@ class StoryBase(BaseModel):
     year: Optional[int] = None
     decade: Optional[str] = None
     theme: Optional[str] = None
+    transcription_status: Optional[str] = "pending"
 
 class StoryCreate(StoryBase):
     pass
@@ -263,6 +271,132 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
     return {"question": question}
 
 
+# ============= iFLYTEK Transcription Helper =============
+
+XFYUN_UPLOAD_URL = "https://raasr.xfyun.cn/v2/api/upload"
+XFYUN_RESULT_URL = "https://raasr.xfyun.cn/v2/api/getResult"
+
+def generate_signa(app_id: str, secret_key: str) -> tuple[str, str]:
+    """生成讯飞接口签名，返回 (signa, ts)"""
+    ts = str(int(time.time()))
+    # 第一步：baseString = appid + ts
+    base_string = app_id + ts
+    # 第二步：MD5(baseString)
+    md5_str = hashlib.md5(base_string.encode('utf-8')).hexdigest()
+    # 第三步：HmacSHA1(md5_str, secret_key) 然后 base64
+    signa = base64.b64encode(
+        hmac.new(
+            secret_key.encode('utf-8'),
+            md5_str.encode('utf-8'),
+            hashlib.sha1
+        ).digest()
+    ).decode('utf-8')
+    return signa, ts
+
+def transcribe_with_xfyun(audio_path: str, app_id: str, secret_key: str) -> str:
+    """
+    调用讯飞录音文件转写 API，返回转写文字。
+    采用同步轮询方式（适合 BackgroundTasks）。
+    """
+    signa, ts = generate_signa(app_id, secret_key)
+    
+    # 读取音频文件
+    with open(audio_path, 'rb') as f:
+        audio_data = f.read()
+    
+    file_size = len(audio_data)
+    file_name = os.path.basename(audio_path)
+    
+    # 第一步：上传文件
+    upload_params = {
+        "appId": app_id,
+        "signa": signa,
+        "ts": ts,
+        "fileName": file_name,
+        "fileSize": file_size,
+        "duration": "200"  # 预估时长（秒）
+    }
+    
+    upload_response = requests.post(
+        XFYUN_UPLOAD_URL,
+        params=upload_params,
+        data=audio_data,
+        headers={"Content-Type": "application/octet-stream"},
+        timeout=60
+    )
+    
+    upload_result = upload_response.json()
+    if upload_result.get("code") != "000000":
+        raise Exception(f"讯飞上传失败: {upload_result.get('descInfo')}")
+    
+    order_id = upload_result["content"]["orderId"]
+    
+    # 第二步：轮询获取结果（最多等待 10 分钟）
+    for attempt in range(60):  # 最多轮询60次
+        time.sleep(10)  # 每10秒查一次
+        
+        # 重新生成签名（signa 有时效性）
+        signa, ts = generate_signa(app_id, secret_key)
+        
+        result_response = requests.get(
+            XFYUN_RESULT_URL,
+            params={
+                "appId": app_id,
+                "signa": signa,
+                "ts": ts,
+                "orderId": order_id,
+                "resultType": "transfer"
+            },
+            timeout=30
+        )
+        
+        result_data = result_response.json()
+        if result_data.get("code") != "000000":
+            continue
+        
+        content = result_data.get("content", {})
+        order_state = content.get("orderState")
+        
+        # orderState: 0=创建 1=处理中 2=转写完成 3=转写失败 4=解析中
+        # 建议同时判断 orderState == 2 || orderState == 4
+        if order_state == 2 or order_state == 4:
+            return parse_xfyun_result(content)
+        elif order_state == 3:
+            raise Exception("讯飞转写失败")
+        # 其他状态继续等待
+    
+    raise Exception("讯飞转写超时")
+
+def parse_xfyun_result(content: dict) -> str:
+    """解析讯飞返回的转写结果，拼接成纯文字"""
+    try:
+        # 讯飞返回的结果在 orderResult 字段里，是 JSON 字符串
+        order_result = content.get("orderResult", "")
+        if isinstance(order_result, str):
+            result_json = json.loads(order_result)
+        else:
+            result_json = order_result
+        
+        # 遍历所有句子，拼接文字
+        sentences = []
+        for lattice in result_json.get("lattice", []):
+            json_1best = lattice.get("json_1best", "{}")
+            if isinstance(json_1best, str):
+                json_1best = json.loads(json_1best)
+            
+            words = json_1best.get("st", {}).get("rt", [{}])[0].get("ws", [])
+            sentence = ""
+            for word in words:
+                cw = word.get("cw", [{}])
+                sentence += cw[0].get("w", "") if cw else ""
+            if sentence.strip():
+                sentences.append(sentence.strip())
+        
+        return "".join(sentences) if sentences else "（转写结果为空）"
+    except Exception as e:
+        # 解析失败时返回原始内容
+        return str(content.get("orderResult", "（解析失败）"))
+
 # ============= Stories API =============
 
 @app.get("/stories", response_model=List[Story])
@@ -297,14 +431,46 @@ def create_story_person(sp: StoryPersonCreate, db: Session = Depends(get_db)):
     return db_sp
 
 
+async def process_audio_task(audio_path: str, story_id: str):
+    """后台处理音频转写"""
+    db = SessionLocal()
+    try:
+        app_id = os.getenv("XFYUN_APP_ID", "")
+        secret_key = os.getenv("XFYUN_SECRET_KEY", "")
+        
+        if not app_id or not secret_key or app_id == "你的appid":
+            transcript = "（请配置讯飞 API Key 以启用语音转写）"
+        else:
+            transcript = transcribe_with_xfyun(audio_path, app_id, secret_key)
+        
+        # 更新数据库
+        story = db.query(models.Story).filter(models.Story.id == story_id).first()
+        if story:
+            story.transcript = transcript
+            story.transcription_status = "done"
+            # 简单生成摘要
+            story.summary = transcript[:50] + "..." if transcript else ""
+            db.commit()
+            
+    except Exception as e:
+        print(f"Transcription error: {str(e)}")
+        story = db.query(models.Story).filter(models.Story.id == story_id).first()
+        if story:
+            story.transcription_status = "failed"
+            story.transcript = f"转写失败：{str(e)}"
+            db.commit()
+    finally:
+        db.close()
+
 @app.post("/stories/process")
 async def process_audio(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     person_id: str = "",
     db: Session = Depends(get_db)
 ):
     """
-    上传音频并进行处理：保存音频、转录、分析主题和年份
+    上传音频并进行处理：保存音频、异步转录
     """
     # 保存音频文件
     timestamp = int(time.time() * 1000)
@@ -318,25 +484,35 @@ async def process_audio(
 
     audio_url = f"/uploads/audio/{filename}"
 
-    # 实际项目中这里会调用语音识别 API 和 NLP 分析
-    # 现在返回模拟数据
-    sample_transcripts = [
-        "那是1965年的夏天，我还在村里上小学，放学和小伙伴一起去河边抓鱼...",
-        "我记得小时候家里很穷，但父母总是把最好的留给我们...",
-        "后来改革开放了，我去了城里打工，那是1980年的事情...",
-        "我和老伴是1968年认识的，那会儿都在生产队劳动...",
-    ]
-    import random
-    transcript = random.choice(sample_transcripts)
-    suggested_themes = random.sample(THEMES, k=random.randint(1, 2))
-    suggested_year = random.randint(1950, 2000)
+    # 1. 创建 Story 记录
+    db_story = models.Story(
+        audio_url=audio_url,
+        transcription_status="processing",
+        transcript="正在转写中...",
+        person_ids=json.dumps([person_id]) if person_id else "[]"
+    )
+    db.add(db_story)
+    db.commit()
+    db.refresh(db_story)
+
+    # 2. 如果有 person_id，创建关联记录
+    if person_id:
+        db_sp = models.StoryPerson(
+            story_id=db_story.id,
+            person_id=person_id,
+            is_protagonist=True
+        )
+        db.add(db_sp)
+        db.commit()
+
+    # 3. 启动后台任务
+    background_tasks.add_task(process_audio_task, filepath, db_story.id)
 
     return {
+        "id": db_story.id,
         "audio_url": audio_url,
-        "transcript": transcript,
-        "suggested_themes": suggested_themes,
-        "suggested_year": suggested_year,
-        "summary": transcript[:30] + "...",
+        "transcription_status": "processing",
+        "message": "音频已上传，后台转写中"
     }
 
 
