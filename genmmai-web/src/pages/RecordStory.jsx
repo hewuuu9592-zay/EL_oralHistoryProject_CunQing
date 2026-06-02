@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getPerson, getPersons, getSuggestQuestion, uploadAndProcessAudio, updateStory, getStory, createStoryPerson } from '../api';
+import { getPerson, getPersons, getSuggestQuestion, uploadAndProcessAudio, updateStory, getStory, createStoryPerson, tagStory } from '../api';
 
 const DEFAULT_QUESTION = "您有什么想留给后代的故事吗？";
 
@@ -44,6 +44,10 @@ const RecordStory = () => {
   const [saving, setSaving] = useState(false);
   const [storyId, setStoryId] = useState(null);
   const [transcriptionStatus, setTranscriptionStatus] = useState('pending'); // 'pending' | 'processing' | 'done' | 'failed'
+  const [aiTagStatus, setAiTagStatus] = useState('untagged'); // 'untagged' | 'processing' | 'done' | 'failed'
+
+  // 文件上传状态
+  const [isUploading, setIsUploading] = useState(false);
 
   // Refs
   const mediaRecorderRef = useRef(null);
@@ -51,6 +55,7 @@ const RecordStory = () => {
   const timerRef = useRef(null);
   const audioRef = useRef(null);
   const audioBlobRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -174,6 +179,30 @@ const RecordStory = () => {
     }
   };
 
+  // 处理文件上传
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 检查是否是音频文件
+    if (!file.type.startsWith('audio/') && !file.name.match(/\.(webm|wav|mp3|m4a|ogg|flac)$/i)) {
+      setError('请上传音频文件');
+      return;
+    }
+
+    setError(null);
+    setIsUploading(true);
+
+    const url = URL.createObjectURL(file);
+    audioBlobRef.current = file;
+    setAudioUrl(url);
+    setIsUploading(false);
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
+  };
+
   const handleGoToConfirm = async () => {
     setProcessing(true);
     try {
@@ -203,11 +232,9 @@ const RecordStory = () => {
         try {
           const res = await getStory(storyId);
           const story = res.data;
-          
+
           if (story.transcription_status === 'done') {
             setTranscript(story.transcript || '');
-            setYear(story.year ? String(story.year) : '');
-            setSelectedThemes(story.theme ? [story.theme] : []);
             setTranscriptionStatus('done');
             clearInterval(pollInterval);
           } else if (story.transcription_status === 'failed') {
@@ -238,6 +265,23 @@ const RecordStory = () => {
         ? prev.filter(id => id !== pId)
         : [...prev, pId]
     );
+  };
+
+  // 一键 AI 标注
+  const handleAITag = async () => {
+    if (!storyId || aiTagStatus !== 'untagged' || !transcript) return;
+    setAiTagStatus('processing');
+    try {
+      const res = await tagStory(storyId);
+      const data = res.data;
+      if (data.year) setYear(String(data.year));
+      if (data.theme) setSelectedThemes([data.theme]);
+      setAiTagStatus('done');
+    } catch (err) {
+      console.error('AI 标注失败:', err);
+      setAiTagStatus('failed');
+      alert('标注失败，请手动填写');
+    }
   };
 
   const handleSave = async () => {
@@ -331,6 +375,33 @@ const RecordStory = () => {
                 className="w-full h-32 p-3 mt-1 border border-[#E5DED3] rounded-lg resize-none focus:outline-none focus:border-[#D4A574]"
               />
             </div>
+
+            {/* 一键标注按钮 */}
+            {transcriptionStatus === 'done' && (
+              <button
+                onClick={handleAITag}
+                disabled={aiTagStatus !== 'untagged'}
+                className={`w-full py-2.5 px-4 rounded-xl border flex items-center justify-center gap-2 transition-all ${
+                  aiTagStatus === 'untagged'
+                    ? 'bg-white border-[#D4A574] text-[#D4A574] hover:bg-[#FAF7F2] shadow-sm'
+                    : aiTagStatus === 'processing'
+                    ? 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-green-50 border-green-200 text-green-600'
+                }`}
+              >
+                {aiTagStatus === 'processing' ? (
+                  <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <span className="text-lg">✨</span>
+                )}
+                <span className="font-medium">
+                  {aiTagStatus === 'processing' ? 'AI 标注中...' :
+                   aiTagStatus === 'done' ? '已自动标注' :
+                   aiTagStatus === 'failed' ? '标注失败，请手动填写' :
+                   '一键 AI 标注（自动填入年份与主题）'}
+                </span>
+              </button>
+            )}
 
             {/* 故事年份 */}
             <div>
@@ -493,6 +564,29 @@ const RecordStory = () => {
 
         {!isRecording && !audioUrl && (
           <p className="mt-6 text-[#6B4F35]">点击开始录音</p>
+        )}
+
+        {/* 上传已有音频文件 */}
+        {!isRecording && !audioUrl && (
+          <div className="mt-8">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <button
+              onClick={triggerFileInput}
+              disabled={isUploading}
+              className="text-sm text-[#D4A574] hover:opacity-70 flex items-center gap-1"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              {isUploading ? '上传中...' : '或上传已有音频文件'}
+            </button>
+          </div>
         )}
 
         {isRecording && (

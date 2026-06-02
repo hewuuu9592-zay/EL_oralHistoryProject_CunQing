@@ -310,7 +310,7 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
     question = None
 
     # 根据性别确定代词
-    if person.gender == "女性":
+    if person.gender == "女":
         pronoun = "她"
         younger_pronoun = "她"
     else:
@@ -515,26 +515,17 @@ def extract_structured_info(transcript: str) -> dict:
 
 
 async def process_audio_task(audio_path: str, story_id: str):
-    """后台处理音频转写"""
+    """后台处理音频转写（仅转写，不做 AI 标注）"""
     db = SessionLocal()
     try:
         # 1. 使用本地 FunASR 转写
         transcript = transcribe_local(audio_path)
 
-        # 2. 调用豆包模型提取结构化信息
-        structured = extract_structured_info(transcript)
-
-        # 3. 更新数据库
+        # 2. 更新数据库
         story = db.query(models.Story).filter(models.Story.id == story_id).first()
         if story:
             story.transcript = transcript
             story.transcription_status = "done"
-            story.summary = structured.get("summary", "")
-            story.year = structured.get("year")
-            story.decade = structured.get("decade")
-            story.theme = structured.get("theme", "其他")
-            # 将 persons_mentioned 保存为 JSON 字符串
-            story.person_ids = json_lib.dumps(structured.get("persons_mentioned", []))
             db.commit()
 
     except Exception as e:
@@ -599,6 +590,48 @@ async def process_audio(
         "transcription_status": "processing",
         "message": "音频已上传，后台转写中"
     }
+
+
+@app.post("/stories/{story_id}/tag")
+def tag_story(story_id: str, db: Session = Depends(get_db)):
+    """手动触发 AI 标注"""
+    story = db.query(models.Story).filter(models.Story.id == story_id).first()
+    if not story:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    if not story.transcript:
+        raise HTTPException(status_code=400, detail="转写内容为空，无法标注")
+
+    # 更新标注状态
+    story.ai_tag_status = "processing"
+    db.commit()
+
+    try:
+        # 调用豆包模型提取结构化信息
+        structured = extract_structured_info(story.transcript)
+
+        # 更新数据库
+        story.summary = structured.get("summary", "")
+        story.year = structured.get("year")
+        story.decade = structured.get("decade")
+        story.theme = structured.get("theme", "其他")
+        story.person_ids = json_lib.dumps(structured.get("persons_mentioned", []))
+        story.ai_tag_status = "done"
+        db.commit()
+
+        return {
+            "summary": story.summary,
+            "year": story.year,
+            "decade": story.decade,
+            "theme": story.theme,
+            "persons_mentioned": structured.get("persons_mentioned", [])
+        }
+
+    except Exception as e:
+        print(f"AI 标注失败: {str(e)}")
+        story.ai_tag_status = "failed"
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"AI 标注失败：{str(e)}")
 
 
 if __name__ == "__main__":

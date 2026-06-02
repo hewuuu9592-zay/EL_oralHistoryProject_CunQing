@@ -40,6 +40,7 @@ class Story(Base):
     decade = Column(String, nullable=True)
     theme = Column(String, nullable=True)
     transcription_status = Column(String, default="pending")  # pending, processing, done, failed
+    ai_tag_status = Column(String, default="untagged")  # untagged, processing, done, failed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     story_persons = relationship("StoryPerson", back_populates="story")
