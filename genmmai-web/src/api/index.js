@@ -21,10 +21,12 @@ export const getStory = (id) => api.get(`/stories/${id}`);
 export const updateStory = (id, data) => api.put(`/stories/${id}`, data);
 export const patchStory = (id, data) => api.patch(`/stories/${id}`, data);
 export const deleteStory = (id) => api.delete(`/stories/${id}`);
-export const uploadAndProcessAudio = (file) => {
+export const uploadAndProcessAudio = (file, personId = "") => {
   const formData = new FormData();
   formData.append('file', file);
+  const config = personId ? { params: { person_id: personId } } : {};
   return api.post('/stories/process', formData, {
+    ...config,
     headers: { 'Content-Type': 'multipart/form-data' }
   });
 };

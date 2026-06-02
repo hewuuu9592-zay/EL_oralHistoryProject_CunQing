@@ -206,8 +206,8 @@ const RecordStory = () => {
   const handleGoToConfirm = async () => {
     setProcessing(true);
     try {
-      // 1. 上传音频并获取 storyId
-      const response = await uploadAndProcessAudio(audioBlobRef.current);
+      // 1. 上传音频并获取 storyId，同时传递 person_id 以便后端创建关联
+      const response = await uploadAndProcessAudio(audioBlobRef.current, personId);
       const data = response.data;
       
       setStoryId(data.id);
