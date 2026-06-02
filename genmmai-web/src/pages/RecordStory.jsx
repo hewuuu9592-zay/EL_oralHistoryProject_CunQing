@@ -306,9 +306,9 @@ const RecordStory = () => {
 
         {/* 处理中状态 */}
         {(transcriptionStatus === 'processing' || transcriptionStatus === 'pending') && (
-          <div className="bg-yellow-50 border border-yellow-200 mx-4 mt-4 p-3 rounded-lg flex items-center justify-center gap-3">
-            <div className="w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-yellow-700 text-sm">讯飞 AI 正在努力转写中，请稍候...</p>
+          <div className="bg-[#FAF7F2] border border-[#D4A574] mx-4 mt-4 p-4 rounded-xl flex items-center justify-center gap-4 shadow-sm">
+            <div className="w-5 h-5 border-3 border-[#D4A574] border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-[#6B4F35] font-medium">本地 AI 正在努力转写中，请稍候...</p>
           </div>
         )}
 
