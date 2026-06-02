@@ -206,8 +206,8 @@ const RecordStory = () => {
           
           if (story.transcription_status === 'done') {
             setTranscript(story.transcript || '');
-            setYear(story.suggested_year ? String(story.suggested_year) : '');
-            setSelectedThemes(story.suggested_themes || []);
+            setYear(story.year ? String(story.year) : '');
+            setSelectedThemes(story.theme ? [story.theme] : []);
             setTranscriptionStatus('done');
             clearInterval(pollInterval);
           } else if (story.transcription_status === 'failed') {

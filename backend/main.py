@@ -8,7 +8,9 @@ import os
 import time
 import base64
 import subprocess
+import json as json_lib
 from dotenv import load_dotenv
+from openai import OpenAI
 import models
 from database import SessionLocal, engine, get_db
 from pydantic import BaseModel
@@ -367,22 +369,102 @@ def create_story_person(sp: StoryPersonCreate, db: Session = Depends(get_db)):
     return db_sp
 
 
+def extract_structured_info(transcript: str) -> dict:
+    """调用豆包模型提取结构化信息"""
+    api_key = os.getenv("ARK_API_KEY", "")
+    if not api_key:
+        return {
+            "summary": transcript[:20] + "..." if transcript else "",
+            "year": None,
+            "decade": None,
+            "theme": "其他",
+            "persons_mentioned": []
+        }
+
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://ark.cn-beijing.volces.com/api/v3",
+        )
+
+        prompt = f"""请从以下口述故事中提取关键信息，只返回JSON格式，不要任何其他内容：{{
+  "summary": "一句话摘要，20字以内，要有温度感",
+  "year": 故事发生年份整数（不确定则返回null）,
+  "decade": "年代描述，如1960年代（不确定则返回null）",
+  "theme": "从以下选一个最合适的：家乡记忆/工作岁月/爱情婚姻/历史亲历/家族传承/童年往事/其他",
+  "persons_mentioned": ["故事中提到的人名列表，没有则为空数组"]
+}}故事内容：{transcript}"""
+
+        response = client.chat.completions.create(
+            model="ep-20260521233914-gllp4",
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+        )
+
+        result_text = response.choices[0].message.content.strip()
+
+        # 尝试解析 JSON
+        try:
+            # 去掉可能的 ```json 和 ``` 标记
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1].split("```")[0]
+
+            result = json_lib.loads(result_text.strip())
+            return {
+                "summary": result.get("summary", ""),
+                "year": result.get("year"),
+                "decade": result.get("decade"),
+                "theme": result.get("theme", "其他"),
+                "persons_mentioned": result.get("persons_mentioned", [])
+            }
+        except json_lib.JSONDecodeError as e:
+            print(f"解析豆包返回JSON失败: {e}, 内容: {result_text}")
+            return {
+                "summary": transcript[:20] + "..." if transcript else "",
+                "year": None,
+                "decade": None,
+                "theme": "其他",
+                "persons_mentioned": []
+            }
+
+    except Exception as e:
+        print(f"豆包 API 调用失败: {str(e)}")
+        return {
+            "summary": transcript[:20] + "..." if transcript else "",
+            "year": None,
+            "decade": None,
+            "theme": "其他",
+            "persons_mentioned": []
+        }
+
+
 async def process_audio_task(audio_path: str, story_id: str):
     """后台处理音频转写"""
     db = SessionLocal()
     try:
-        # 使用本地 FunASR 转写
+        # 1. 使用本地 FunASR 转写
         transcript = transcribe_local(audio_path)
-        
-        # 更新数据库
+
+        # 2. 调用豆包模型提取结构化信息
+        structured = extract_structured_info(transcript)
+
+        # 3. 更新数据库
         story = db.query(models.Story).filter(models.Story.id == story_id).first()
         if story:
             story.transcript = transcript
             story.transcription_status = "done"
-            # 简单生成摘要
-            story.summary = transcript[:50] + "..." if transcript else ""
+            story.summary = structured.get("summary", "")
+            story.year = structured.get("year")
+            story.decade = structured.get("decade")
+            story.theme = structured.get("theme", "其他")
+            # 将 persons_mentioned 保存为 JSON 字符串
+            story.person_ids = json_lib.dumps(structured.get("persons_mentioned", []))
             db.commit()
-            
+
     except Exception as e:
         print(f"Transcription error: {str(e)}")
         story = db.query(models.Story).filter(models.Story.id == story_id).first()
