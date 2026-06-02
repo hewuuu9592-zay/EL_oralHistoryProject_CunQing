@@ -6,6 +6,7 @@ from typing import List, Optional
 import json
 import os
 import time
+import random
 import base64
 import subprocess
 import json as json_lib
@@ -217,8 +218,6 @@ SUGGEST_QUESTIONS = [
     "您最想给子孙后代讲什么故事？",
 ]
 
-import random
-
 def get_suggest_question(person_name: str = None) -> str:
     """根据人物信息生成引导问题"""
     base_questions = SUGGEST_QUESTIONS.copy()
@@ -279,11 +278,84 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
     # 获取人物信息
     person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if person is None:
-        return {"question": "您有什么想留给后代的故事吗？"}
+        return {"question": "您有什么想留给后代的故事吗？", "suggested_theme": "其他"}
 
-    # 生成引导问题
-    question = get_suggest_question(person.name)
-    return {"question": question}
+    # 1. 查询该人物已有故事的主题分布
+    sp_records = db.query(models.StoryPerson).filter(models.StoryPerson.person_id == person_id).all()
+    story_ids = [sp.story_id for sp in sp_records]
+
+    existing_themes = []
+    missing_themes = []
+
+    if story_ids:
+        stories = db.query(models.Story.theme).filter(models.Story.id.in_(story_ids)).all()
+        existing_themes = [s.theme for s in stories if s.theme]
+        # 找出没有讲述过的主题
+        missing_themes = [t for t in THEMES if t not in existing_themes]
+
+    # 2. 确定要提问的主题
+    if missing_themes:
+        suggested_theme = missing_themes[0]
+    elif existing_themes:
+        # 所有主题都有了，随机深挖一个
+        suggested_theme = random.choice(existing_themes)
+    else:
+        # 没有任何故事，随机选一个
+        suggested_theme = random.choice(THEMES)
+
+    existing_str = "、".join(existing_themes) if existing_themes else "暂无"
+
+    # 3. 调用豆包模型生成引导问题
+    api_key = os.getenv("ARK_API_KEY", "")
+    question = None
+
+    # 根据性别确定代词
+    if person.gender == "女性":
+        pronoun = "她"
+        younger_pronoun = "她"
+    else:
+        pronoun = "他"
+        younger_pronoun = "他"
+
+    if api_key:
+        try:
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://ark.cn-beijing.volces.com/api/v3",
+            )
+
+            prompt = f"""你是一个温柔的家族记忆整理师。这位长辈名叫{person.name}，{pronoun}，生于{person.birth_year or '未知'}年。{pronoun}已经讲述了这些方面的故事：{existing_str}。请为'{suggested_theme}'这个主题，生成一个温暖具体的引导问题。要求：口语化，像晚辈在问长辈，不超过30字，直接返回问题本身，不要任何前缀。"""
+
+            response = client.chat.completions.create(
+                model="ep-20260521233914-gllp4",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+            )
+
+            question = response.choices[0].message.content.strip()
+
+            # 去除可能的引号
+            if question.startswith('"') and question.endswith('"'):
+                question = question[1:-1]
+
+        except Exception as e:
+            print(f"豆包 API 调用失败: {str(e)}")
+            question = None
+
+    # 4. 回退逻辑
+    if not question:
+        fallback_questions = {
+            "家乡记忆": f"{person.name}小时候住在哪儿，那边有什么好玩的事？",
+            "工作岁月": f"{person.name}年轻时做什么工作？有什么难忘的事？",
+            "爱情婚姻": f"{person.name}是怎么认识家人的？",
+            "历史亲历": f"{person.name}经历过什么特别的时代？",
+            "家族传承": f"{person.name}家里有什么传统或手艺？",
+            "童年往事": f"{person.name}小时候最喜欢玩什么？",
+            "其他": "您有什么想留给后代的故事吗？",
+        }
+        question = fallback_questions.get(suggested_theme, "您有什么想留给后代的故事吗？")
+
+    return {"question": question, "suggested_theme": suggested_theme}
 
 
 # ============= FunASR Local Transcription Helper =============
