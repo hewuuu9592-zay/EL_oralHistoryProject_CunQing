@@ -29,6 +29,6 @@ export const uploadAndProcessAudio = (file) => {
 };
 export const createStoryPerson = (data) => api.post('/story-persons', data);
 
-export const tagStory = (id) => api.post(`/stories/${id}/tag`);
+export const tagStory = (id, transcript) => api.post(`/stories/${id}/tag`, { transcript });
 
 export default api;

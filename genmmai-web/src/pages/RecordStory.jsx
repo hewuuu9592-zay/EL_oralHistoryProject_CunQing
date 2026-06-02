@@ -272,7 +272,7 @@ const RecordStory = () => {
     if (!storyId || aiTagStatus !== 'untagged' || !transcript) return;
     setAiTagStatus('processing');
     try {
-      const res = await tagStory(storyId);
+      const res = await tagStory(storyId, transcript);
       const data = res.data;
       if (data.year) setYear(String(data.year));
       if (data.theme) setSelectedThemes([data.theme]);

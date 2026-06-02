@@ -97,6 +97,10 @@ class StoryBase(BaseModel):
     decade: Optional[str] = None
     theme: Optional[str] = None
     transcription_status: Optional[str] = "pending"
+    ai_tag_status: Optional[str] = "untagged"
+
+class TagRequest(BaseModel):
+    transcript: str
 
 class StoryCreate(StoryBase):
     pass
@@ -593,13 +597,14 @@ async def process_audio(
 
 
 @app.post("/stories/{story_id}/tag")
-def tag_story(story_id: str, db: Session = Depends(get_db)):
-    """手动触发 AI 标注"""
+def tag_story(story_id: str, request: TagRequest, db: Session = Depends(get_db)):
+    """手动触发 AI 标注（使用前端传来的 transcript）"""
     story = db.query(models.Story).filter(models.Story.id == story_id).first()
     if not story:
         raise HTTPException(status_code=404, detail="故事不存在")
 
-    if not story.transcript:
+    transcript = request.transcript
+    if not transcript:
         raise HTTPException(status_code=400, detail="转写内容为空，无法标注")
 
     # 更新标注状态
@@ -608,7 +613,7 @@ def tag_story(story_id: str, db: Session = Depends(get_db)):
 
     try:
         # 调用豆包模型提取结构化信息
-        structured = extract_structured_info(story.transcript)
+        structured = extract_structured_info(transcript)
 
         # 更新数据库
         story.summary = structured.get("summary", "")
