@@ -18,6 +18,8 @@ export const getPersonStoryThemes = (id) => api.get(`/persons/${id}/stories/them
 export const getSuggestQuestion = (id) => api.get(`/persons/${id}/suggest-question`);
 export const createStory = (data) => api.post('/stories', data);
 export const getStory = (id) => api.get(`/stories/${id}`);
+export const updateStory = (id, data) => api.put(`/stories/${id}`, data);
+export const deleteStory = (id) => api.delete(`/stories/${id}`);
 export const uploadAndProcessAudio = (file) => {
   const formData = new FormData();
   formData.append('file', file);

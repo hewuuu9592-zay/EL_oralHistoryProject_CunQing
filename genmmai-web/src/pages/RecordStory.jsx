@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getPerson, getPersons, getSuggestQuestion, uploadAndProcessAudio, createStory, createStoryPerson } from '../api';
+import { getPerson, getPersons, getSuggestQuestion, uploadAndProcessAudio, updateStory, getStory, createStoryPerson } from '../api';
 
 const DEFAULT_QUESTION = "您有什么想留给后代的故事吗？";
 
@@ -42,6 +42,8 @@ const RecordStory = () => {
   const [selectedPersons, setSelectedPersons] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [storyId, setStoryId] = useState(null);
+  const [transcriptionStatus, setTranscriptionStatus] = useState('pending'); // 'pending' | 'processing' | 'done' | 'failed'
 
   // Refs
   const mediaRecorderRef = useRef(null);
@@ -175,28 +177,51 @@ const RecordStory = () => {
   const handleGoToConfirm = async () => {
     setProcessing(true);
     try {
-      // 上传音频并处理
+      // 1. 上传音频并获取 storyId
       const response = await uploadAndProcessAudio(audioBlobRef.current);
       const data = response.data;
-
-      setTranscript(data.transcript || '');
-      setYear(data.suggested_year ? String(data.suggested_year) : '');
-      setSelectedThemes(data.suggested_themes || []);
-
+      
+      setStoryId(data.id);
+      setTranscriptionStatus('processing');
+      
       // 默认选中当前人物
       setSelectedPersons([personId]);
-
       setStage('confirm');
     } catch (err) {
-      console.error('处理音频失败:', err);
-      // 仍然进入确认阶段，但数据为空
-      setSelectedThemes([]);
-      setSelectedPersons([personId]);
-      setStage('confirm');
+      console.error('上传音频失败:', err);
+      setError('上传失败，请检查网络连接或后端服务');
     } finally {
       setProcessing(false);
     }
   };
+
+  // 轮询转写结果
+  useEffect(() => {
+    let pollInterval;
+    if (stage === 'confirm' && storyId && (transcriptionStatus === 'processing' || transcriptionStatus === 'pending')) {
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await getStory(storyId);
+          const story = res.data;
+          
+          if (story.transcription_status === 'done') {
+            setTranscript(story.transcript || '');
+            setYear(story.suggested_year ? String(story.suggested_year) : '');
+            setSelectedThemes(story.suggested_themes || []);
+            setTranscriptionStatus('done');
+            clearInterval(pollInterval);
+          } else if (story.transcription_status === 'failed') {
+            setTranscript(story.transcript || '转写失败');
+            setTranscriptionStatus('failed');
+            clearInterval(pollInterval);
+          }
+        } catch (err) {
+          console.error('轮询转写状态失败:', err);
+        }
+      }, 3000); // 每3秒查一次
+    }
+    return () => clearInterval(pollInterval);
+  }, [stage, storyId, transcriptionStatus]);
 
   const toggleTheme = (themeName) => {
     setSelectedThemes(prev =>
@@ -220,8 +245,8 @@ const RecordStory = () => {
     setSaving(true);
 
     try {
-      // 1. 创建故事
-      const storyRes = await createStory({
+      // 更新现有故事
+      await updateStory(storyId, {
         transcript: transcript,
         summary: transcript?.slice(0, 50) || '',
         year: year ? parseInt(year) : null,
@@ -229,14 +254,13 @@ const RecordStory = () => {
         person_ids: JSON.stringify(selectedPersons),
       });
 
-      const storyId = storyRes.data.id;
-
-      // 2. 创建故事人物关联
-      for (const pId of selectedPersons) {
+      // 故事人物关联已经在后端上传时创建了部分，这里补充其他关联
+      const otherPersons = selectedPersons.filter(id => id !== personId);
+      for (const pId of otherPersons) {
         await createStoryPerson({
           story_id: storyId,
           person_id: pId,
-          is_protagonist: pId === personId,
+          is_protagonist: false,
         });
       }
 
@@ -281,9 +305,16 @@ const RecordStory = () => {
         </div>
 
         {/* 处理中状态 */}
-        {processing && (
-          <div className="bg-yellow-50 border border-yellow-200 mx-4 mt-4 p-3 rounded-lg">
-            <p className="text-yellow-700 text-sm text-center">AI 正在处理录音...</p>
+        {(transcriptionStatus === 'processing' || transcriptionStatus === 'pending') && (
+          <div className="bg-yellow-50 border border-yellow-200 mx-4 mt-4 p-3 rounded-lg flex items-center justify-center gap-3">
+            <div className="w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-yellow-700 text-sm">讯飞 AI 正在努力转写中，请稍候...</p>
+          </div>
+        )}
+
+        {transcriptionStatus === 'failed' && (
+          <div className="bg-red-50 border border-red-200 mx-4 mt-4 p-3 rounded-lg">
+            <p className="text-red-700 text-sm text-center">转写失败，您可以手动输入内容</p>
           </div>
         )}
 

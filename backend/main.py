@@ -6,10 +6,8 @@ from typing import List, Optional
 import json
 import os
 import time
-import hashlib
-import hmac
 import base64
-import requests
+import subprocess
 from dotenv import load_dotenv
 import models
 from database import SessionLocal, engine, get_db
@@ -17,6 +15,21 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
+
+# ============= FunASR Local Model (Lazy Load) =============
+_funasr_model = None
+
+def get_funasr_model():
+    global _funasr_model
+    if _funasr_model is None:
+        from funasr import AutoModel
+        _funasr_model = AutoModel(
+            model="paraformer-zh",
+            vad_model="fsmn-vad",
+            vad_kwargs={"max_single_segment_time": 60000},
+            punc_model="ct-punc",
+        )
+    return _funasr_model
 
 # Create tables
 models.Base.metadata.create_all(bind=engine)
@@ -271,131 +284,39 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
     return {"question": question}
 
 
-# ============= iFLYTEK Transcription Helper =============
+# ============= FunASR Local Transcription Helper =============
 
-XFYUN_UPLOAD_URL = "https://raasr.xfyun.cn/v2/api/upload"
-XFYUN_RESULT_URL = "https://raasr.xfyun.cn/v2/api/getResult"
-
-def generate_signa(app_id: str, secret_key: str) -> tuple[str, str]:
-    """生成讯飞接口签名，返回 (signa, ts)"""
-    ts = str(int(time.time()))
-    # 第一步：baseString = appid + ts
-    base_string = app_id + ts
-    # 第二步：MD5(baseString)
-    md5_str = hashlib.md5(base_string.encode('utf-8')).hexdigest()
-    # 第三步：HmacSHA1(md5_str, secret_key) 然后 base64
-    signa = base64.b64encode(
-        hmac.new(
-            secret_key.encode('utf-8'),
-            md5_str.encode('utf-8'),
-            hashlib.sha1
-        ).digest()
-    ).decode('utf-8')
-    return signa, ts
-
-def transcribe_with_xfyun(audio_path: str, app_id: str, secret_key: str) -> str:
-    """
-    调用讯飞录音文件转写 API，返回转写文字。
-    采用同步轮询方式（适合 BackgroundTasks）。
-    """
-    signa, ts = generate_signa(app_id, secret_key)
-    
-    # 读取音频文件
-    with open(audio_path, 'rb') as f:
-        audio_data = f.read()
-    
-    file_size = len(audio_data)
-    file_name = os.path.basename(audio_path)
-    
-    # 第一步：上传文件
-    upload_params = {
-        "appId": app_id,
-        "signa": signa,
-        "ts": ts,
-        "fileName": file_name,
-        "fileSize": file_size,
-        "duration": "200"  # 预估时长（秒）
-    }
-    
-    upload_response = requests.post(
-        XFYUN_UPLOAD_URL,
-        params=upload_params,
-        data=audio_data,
-        headers={"Content-Type": "application/octet-stream"},
-        timeout=60
+def convert_to_wav(input_path: str) -> str:
+    """把任意格式音频转为 wav，供 FunASR 使用"""
+    output_path = input_path.rsplit(".", 1)[0] + ".wav"
+    result = subprocess.run(
+        ["ffmpeg", "-i", input_path, "-ar", "16000", "-ac", "1", output_path, "-y"],
+        capture_output=True, text=True
     )
-    
-    upload_result = upload_response.json()
-    if upload_result.get("code") != "000000":
-        raise Exception(f"讯飞上传失败: {upload_result.get('descInfo')}")
-    
-    order_id = upload_result["content"]["orderId"]
-    
-    # 第二步：轮询获取结果（最多等待 10 分钟）
-    for attempt in range(60):  # 最多轮询60次
-        time.sleep(10)  # 每10秒查一次
-        
-        # 重新生成签名（signa 有时效性）
-        signa, ts = generate_signa(app_id, secret_key)
-        
-        result_response = requests.get(
-            XFYUN_RESULT_URL,
-            params={
-                "appId": app_id,
-                "signa": signa,
-                "ts": ts,
-                "orderId": order_id,
-                "resultType": "transfer"
-            },
-            timeout=30
+    if result.returncode != 0:
+        # 转换失败就直接用原文件试试
+        return input_path
+    return output_path
+
+def transcribe_local(audio_path: str) -> str:
+    """用 FunASR 本地转写音频文件，返回纯文字"""
+    try:
+        wav_path = convert_to_wav(audio_path)
+        model = get_funasr_model()
+        res = model.generate(
+            input=wav_path,
+            batch_size_s=300,
         )
         
-        result_data = result_response.json()
-        if result_data.get("code") != "000000":
-            continue
-        
-        content = result_data.get("content", {})
-        order_state = content.get("orderState")
-        
-        # orderState: 0=创建 1=处理中 2=转写完成 3=转写失败 4=解析中
-        # 建议同时判断 orderState == 2 || orderState == 4
-        if order_state == 2 or order_state == 4:
-            return parse_xfyun_result(content)
-        elif order_state == 3:
-            raise Exception("讯飞转写失败")
-        # 其他状态继续等待
-    
-    raise Exception("讯飞转写超时")
-
-def parse_xfyun_result(content: dict) -> str:
-    """解析讯飞返回的转写结果，拼接成纯文字"""
-    try:
-        # 讯飞返回的结果在 orderResult 字段里，是 JSON 字符串
-        order_result = content.get("orderResult", "")
-        if isinstance(order_result, str):
-            result_json = json.loads(order_result)
-        else:
-            result_json = order_result
-        
-        # 遍历所有句子，拼接文字
-        sentences = []
-        for lattice in result_json.get("lattice", []):
-            json_1best = lattice.get("json_1best", "{}")
-            if isinstance(json_1best, str):
-                json_1best = json.loads(json_1best)
+        # 转换后的临时文件清理
+        if wav_path != audio_path and os.path.exists(wav_path):
+            os.remove(wav_path)
             
-            words = json_1best.get("st", {}).get("rt", [{}])[0].get("ws", [])
-            sentence = ""
-            for word in words:
-                cw = word.get("cw", [{}])
-                sentence += cw[0].get("w", "") if cw else ""
-            if sentence.strip():
-                sentences.append(sentence.strip())
-        
-        return "".join(sentences) if sentences else "（转写结果为空）"
+        if res and len(res) > 0:
+            return res[0].get("text", "").strip()
+        return "（转写结果为空）"
     except Exception as e:
-        # 解析失败时返回原始内容
-        return str(content.get("orderResult", "（解析失败）"))
+        raise Exception(f"FunASR 转写失败: {str(e)}")
 
 # ============= Stories API =============
 
@@ -409,6 +330,21 @@ def create_story(story: StoryCreate, db: Session = Depends(get_db)):
     """新增故事"""
     db_story = models.Story(**story.model_dump())
     db.add(db_story)
+    db.commit()
+    db.refresh(db_story)
+    return db_story
+
+@app.put("/stories/{story_id}", response_model=Story)
+def update_story(story_id: str, story: StoryCreate, db: Session = Depends(get_db)):
+    """更新故事信息"""
+    db_story = db.query(models.Story).filter(models.Story.id == story_id).first()
+    if db_story is None:
+        raise HTTPException(status_code=404, detail="故事不存在")
+    
+    for key, value in story.model_dump().items():
+        if value is not None:
+            setattr(db_story, key, value)
+    
     db.commit()
     db.refresh(db_story)
     return db_story
@@ -435,13 +371,8 @@ async def process_audio_task(audio_path: str, story_id: str):
     """后台处理音频转写"""
     db = SessionLocal()
     try:
-        app_id = os.getenv("XFYUN_APP_ID", "")
-        secret_key = os.getenv("XFYUN_SECRET_KEY", "")
-        
-        if not app_id or not secret_key or app_id == "你的appid":
-            transcript = "（请配置讯飞 API Key 以启用语音转写）"
-        else:
-            transcript = transcribe_with_xfyun(audio_path, app_id, secret_key)
+        # 使用本地 FunASR 转写
+        transcript = transcribe_local(audio_path)
         
         # 更新数据库
         story = db.query(models.Story).filter(models.Story.id == story_id).first()
