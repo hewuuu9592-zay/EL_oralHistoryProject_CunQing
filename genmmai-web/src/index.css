@@ -28,6 +28,17 @@
   vertical-align: top; 
   position: relative; 
 } 
+
+/* 所有子嗣容器都居中 */
+.family-tree ul {
+  text-align: center;
+}
+
+.family-tree ul li {
+  display: inline-block !important;
+  float: none;
+}
+
 /* 水平连线 */ 
 .family-tree li:before { 
   content: ""; 
