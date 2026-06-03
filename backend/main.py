@@ -403,6 +403,52 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
     return {"question": question, "suggested_theme": suggested_theme}
 
 
+@app.get("/persons/{person_id}/relations")
+def get_person_relations(person_id: str, db: Session = Depends(get_db)):
+    """从故事(person_ids)中自动推导关联关系"""
+    import json
+    from collections import defaultdict
+
+    # 检查人物是否存在
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="人物不存在")
+
+    # 查找包含该人物的所有故事
+    all_stories = db.query(models.Story).all()
+    stories_with_person = [
+        s for s in all_stories
+        if s.person_ids and person_id in json.loads(s.person_ids)
+    ]
+
+    # 统计共现次数
+    cooccur = defaultdict(int)
+    for story in stories_with_person:
+        person_ids = json.loads(story.person_ids)
+        for pid in person_ids:
+            if pid != person_id:
+                cooccur[pid] += 1
+
+    # 构建返回结果
+    result = []
+    for pid, count in cooccur.items():
+        other_person = db.query(models.Person).filter(models.Person.id == pid).first()
+        if other_person:
+            result.append({
+                "person": {
+                    "id": other_person.id,
+                    "name": other_person.name,
+                    "avatar_url": other_person.avatar_url
+                },
+                "story_count": count,
+                "relation_type": ""
+            })
+
+    # 按共同故事数量倒序
+    result.sort(key=lambda x: x["story_count"], reverse=True)
+    return result
+
+
 # ============= FunASR Local Transcription Helper =============
 
 def convert_to_wav(input_path: str) -> str:

@@ -5,6 +5,7 @@ const api = axios.create({
 });
 
 export const getPersons = () => api.get('/persons');
+export const getPersonRelations = (id) => api.get(`/persons/${id}/relations`);
 export const createPerson = (data) => api.post('/persons', data);
 export const updatePerson = (id, data) => api.put(`/persons/${id}`, data);
 export const deletePerson = (id) => api.delete(`/persons/${id}`);

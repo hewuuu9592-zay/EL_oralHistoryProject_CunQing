@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getPerson, getPersonStories, getPersonStoryThemes } from '../api';
+import { getPerson, getPersonStories, getPersonStoryThemes, getPersonRelations } from '../api';
 
-// 主题颜色映射
+// ========== 主题颜色映射 ==========
 const THEME_COLORS = {
-  '家乡记忆': { bg: '#DCFCE7', text: '#166534', emoji: '🏠' },  // 绿色
-  '工作岁月': { bg: '#DBEAFE', text: '#1E40AF', emoji: '💼' },  // 蓝色
-  '爱情婚姻': { bg: '#FCE7F9', text: '#9D174D', emoji: '💕' },  // 粉色
-  '历史亲历': { bg: '#FEF9C3', text: '#854D0E', emoji: '📜' },  // 黄色
-  '家族传承': { bg: '#166534', text: '#FFFFFF', emoji: '🌳' },  // 深绿
-  '童年往事': { bg: '#FFEDD5', text: '#9A3412', emoji: '🧒' },  // 橙色
-  '其他': { bg: '#F3F4F6', text: '#374151', emoji: '📝' },  // 灰色
+  '家乡记忆': { bg: '#DCFCE7', text: '#166534', emoji: '🏠' },
+  '工作岁月': { bg: '#DBEAFE', text: '#1E40AF', emoji: '💼' },
+  '爱情婚姻': { bg: '#FCE7F9', text: '#9D174D', emoji: '💕' },
+  '历史亲历': { bg: '#FEF9C3', text: '#854D0E', emoji: '📜' },
+  '家族传承': { bg: '#166534', text: '#FFFFFF', emoji: '🌳' },
+  '童年往事': { bg: '#FFEDD5', text: '#9A3412', emoji: '🧒' },
+  '其他': { bg: '#F3F4F6', text: '#374151', emoji: '📝' },
 };
 
 const getThemeStyle = (theme) => {
@@ -18,7 +18,305 @@ const getThemeStyle = (theme) => {
   return THEME_COLORS[key] || THEME_COLORS['其他'];
 };
 
-const Timeline = ({ stories, person, onStoryClick }) => {
+// ========== SVG 关系图组件 ==========
+const RelationsGraph = ({ currentPerson, relations, stories, onEdgeClick }) => {
+  const navigate = useNavigate();
+
+  // 计算布局参数
+  const { centerX, centerY, radius } = useMemo(() => {
+    const cx = 400;
+    const cy = 300;
+    const total = relations?.length || 0;
+    const r = total <= 4 ? 160 : total <= 8 ? 220 : 280;
+    return { centerX: cx, centerY: cy, radius: r };
+  }, [relations?.length]);
+
+  // 计算每个关系的坐标
+  const nodes = useMemo(() => {
+    if (!relations || relations.length === 0) return [];
+
+    return relations.map((rel, index) => {
+      const angle = (index / relations.length) * 2 * Math.PI - Math.PI / 2;
+      const x = centerX + radius * Math.cos(angle);
+      const y = centerY + radius * Math.sin(angle);
+      return {
+        ...rel,
+        x,
+        y,
+        angle,
+      };
+    });
+  }, [relations, centerX, centerY, radius]);
+
+  // 处理连线点击
+  const handleEdgeClick = (related) => {
+    onEdgeClick(related);
+  };
+
+  // 处理节点点击
+  const handleNodeClick = (personId) => {
+    navigate(`/person/${personId}`);
+  };
+
+  // 空状态
+  if (!relations || relations.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <p className="text-gray-500 mb-4">还没有与其他人共同出现的故事</p>
+        <button
+          onClick={() => navigate(`/record?personId=${currentPerson.id}`)}
+          className="px-4 py-2 bg-[#4A3728] text-white rounded-lg"
+        >
+          去录入故事
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full" style={{ height: 600 }}>
+      <svg width="100%" viewBox="0 0 800 600" className="w-full">
+        <defs>
+          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.15"/>
+          </filter>
+        </defs>
+
+        {/* 连线层 - 先画，在节点下方 */}
+        {nodes.map((node) => {
+          const strokeWidth = node.story_count <= 2 ? 1.5 : node.story_count <= 5 ? 2.5 : 4;
+          const midX = (centerX + node.x) / 2;
+          const midY = (centerY + node.y) / 2;
+
+          return (
+            <g key={`edge-${node.person.id}`}>
+              {/* 实体连线 */}
+              <line
+                x1={centerX}
+                y1={centerY}
+                x2={node.x}
+                y2={node.y}
+                stroke="#C9A84C"
+                strokeWidth={strokeWidth}
+              />
+              {/* 箭头 */}
+              <polygon
+                points={`${node.x - 8},${node.y - 6} ${node.x},${node.y} ${node.x + 8},${node.y - 6}`}
+                fill="#C9A84C"
+                transform={`rotate(${(node.angle * 180 / Math.PI) + 90}, ${node.x}, ${node.y})`}
+              />
+              {/* 可点击的标签区域 */}
+              <g
+                transform={`translate(${midX}, ${midY})`}
+                style={{ cursor: 'pointer' }}
+                onClick={() => handleEdgeClick(node)}
+              >
+                <rect
+                  x={-30}
+                  y={-12}
+                  width={60}
+                  height={24}
+                  fill="transparent"
+                />
+                <text
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={12}
+                  fill="#8B7355"
+                  className="pointer-events-none"
+                >
+                  {node.relation_type}
+                </text>
+              </g>
+            </g>
+          );
+        })}
+
+        {/* 中心节点 */}
+        <g transform={`translate(${centerX}, ${centerY})`}>
+          <circle r={40} fill="white" stroke="#5C3D2E" strokeWidth={2} filter="url(#shadow)" />
+          {currentPerson?.avatar ? (
+            <clipPath id="centerClip">
+              <circle r={36} />
+            </clipPath>
+          ) : null}
+          {currentPerson?.avatar ? (
+            <image
+              href={currentPerson.avatar}
+              x={-36}
+              y={-36}
+              width={72}
+              height={72}
+              clipPath="url(#centerClip)"
+            />
+          ) : (
+            <text
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize={28}
+              fontWeight="bold"
+              fill="#5C3D2E"
+            >
+              {currentPerson?.name?.charAt(0) || '?'}
+            </text>
+          )}
+        </g>
+        {/* 中心节点名字 */}
+        <text
+          x={centerX}
+          y={centerY + 55}
+          textAnchor="middle"
+          fontSize={13}
+          fill="#5C3D2E"
+          fontWeight="500"
+        >
+          {currentPerson?.name}
+        </text>
+
+        {/* 周围节点 */}
+        {nodes.map((node) => (
+          <g key={node.person.id} transform={`translate(${node.x}, ${node.y})`}>
+            <circle
+              r={30}
+              fill="white"
+              stroke="#C9A84C"
+              strokeWidth={1.5}
+              style={{ cursor: 'pointer', transition: 'stroke 0.2s' }}
+              className="hover:stroke-[#A08040]"
+              onClick={() => handleNodeClick(node.person.id)}
+            />
+            {node.person?.avatar_url ? (
+              <clipPath id={`clip-${node.person.id}`}>
+                <circle r={26} />
+              </clipPath>
+            ) : null}
+            {node.person?.avatar_url ? (
+              <image
+                href={node.person.avatar_url}
+                x={-26}
+                y={-26}
+                width={52}
+                height={52}
+                clipPath={`url(#clip-${node.person.id})`}
+                style={{ cursor: 'pointer' }}
+                onClick={() => handleNodeClick(node.person.id)}
+              />
+            ) : (
+              <text
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize={22}
+                fontWeight="bold"
+                fill="#5C3D2E"
+                style={{ cursor: 'pointer' }}
+                onClick={() => handleNodeClick(node.person.id)}
+              >
+                {node.person?.name?.charAt(0) || '?'}
+              </text>
+            )}
+            {/* 节点名字 */}
+            <text
+              y={45}
+              textAnchor="middle"
+              fontSize={12}
+              fill="#5C3D2E"
+            >
+              {node.person?.name}
+            </text>
+            {/* 故事数量 */}
+            <text
+              y={-35}
+              textAnchor="middle"
+              fontSize={10}
+              fill="#C9A84C"
+              fontWeight="600"
+            >
+              {node.story_count}则
+            </text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+};
+
+// ========== 关系侧边栏 ==========
+const RelationSidebar = ({ currentPerson, relatedPerson, stories, onClose }) => {
+  const [sharedStories, setSharedStories] = useState([]);
+
+  useEffect(() => {
+    if (!stories || !relatedPerson) {
+      setSharedStories([]);
+      return;
+    }
+    // 筛选同时包含这两个人的故事
+    const shared = stories.filter(story => {
+      const personIds = story.person_ids ? JSON.parse(story.person_ids) : [];
+      return personIds.includes(relatedPerson.person.id);
+    });
+    setSharedStories(shared);
+  }, [stories, relatedPerson]);
+
+  return (
+    <div className="h-full">
+      {/* 头部 */}
+      <div className="sticky top-0 bg-white border-b border-[#E5DED3] p-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-bold text-[#4A3728] font-serif">
+            {currentPerson?.name} × {relatedPerson?.person?.name}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-xl"
+          >
+            ✕
+          </button>
+        </div>
+        <p className="text-sm text-[#D4A574] mt-1">共同的故事</p>
+      </div>
+
+      {/* 内容区 */}
+      <div className="p-4">
+        {sharedStories.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-gray-500 mb-4">还没有共同的故事</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {sharedStories.map(story => {
+              const themeStyle = getThemeStyle(story.theme);
+              return (
+                <div
+                  key={story.id}
+                  className="p-3 bg-[#FAF7F2] rounded-lg cursor-pointer hover:bg-[#F5EDE0] transition-colors"
+                  onClick={() => window.location.href = `/story/${story.id}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-bold text-[#D4A574]">
+                      {story.year || '?'}
+                    </span>
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: themeStyle.bg, color: themeStyle.text }}
+                    >
+                      {themeStyle.emoji} {story.theme || '其他'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-[#4A3728] line-clamp-2">
+                    {story.summary || story.transcript?.slice(0, 50) || '暂无摘要'}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ========== 时间轴组件 ==========
+const Timeline = ({ stories, person }) => {
   const navigate = useNavigate();
   const birthYear = person?.birth_year;
   const deathYear = person?.death_year;
@@ -37,7 +335,6 @@ const Timeline = ({ stories, person, onStoryClick }) => {
     );
   }
 
-  // 按 year 排序（null 值排最后）
   const sortedStories = [...stories].sort((a, b) => {
     if (!a.year) return 1;
     if (!b.year) return -1;
@@ -46,44 +343,33 @@ const Timeline = ({ stories, person, onStoryClick }) => {
 
   return (
     <div className="relative pl-4">
-      {/* 顶部起点 */}
       <div className="flex items-center mb-4">
         <div className="w-2 h-2 rounded-full bg-[#4A3728] mr-3" />
         <span className="text-sm font-bold text-[#D4A574]">{birthYear}</span>
       </div>
 
-      {/* 竖线 */}
       <div className="absolute left-[calc(0.5rem+3px)] top-6 bottom-6 w-0.5 bg-[#E8DDD0]" />
 
-      {/* 故事节点 */}
       <div className="space-y-6">
-        {sortedStories.map((story, index) => {
+        {sortedStories.map((story) => {
           const themeStyle = getThemeStyle(story.theme);
           return (
             <div
               key={story.id}
               className="relative pl-6 cursor-pointer group"
-              onClick={() => onStoryClick(story.id)}
+              onClick={() => navigate(`/story/${story.id}`)}
             >
-              {/* 节点圆点 */}
               <div className="absolute left-0 top-1 w-2 h-2 rounded-full bg-[#4A3728]" />
-
-              {/* 内容 */}
               <div>
-                {/* 年份 */}
                 <div className="text-sm font-bold text-[#D4A574]">
                   {story.year || '未知年份'}
                 </div>
-
-                {/* 主题标签 */}
                 <div
                   className="inline-block px-2 py-0.5 rounded-full text-xs mt-1"
                   style={{ backgroundColor: themeStyle.bg, color: themeStyle.text }}
                 >
                   {themeStyle.emoji} {story.theme || '其他'}
                 </div>
-
-                {/* 摘要 */}
                 <p className="text-sm text-[#4A3728] mt-1 group-hover:opacity-70">
                   {story.summary || story.transcript?.slice(0, 50) || '暂无摘要'}
                 </p>
@@ -93,7 +379,6 @@ const Timeline = ({ stories, person, onStoryClick }) => {
         })}
       </div>
 
-      {/* 底部终点 */}
       <div className="flex items-center mt-4">
         <div className="w-2 h-2 rounded-full bg-[#4A3728] mr-3" />
         <span className="text-sm font-bold text-[#D4A574]">
@@ -104,16 +389,15 @@ const Timeline = ({ stories, person, onStoryClick }) => {
   );
 };
 
-// 主题顺序
+// ========== 主题故事集组件 ==========
 const THEMES_ORDER = [
   '家乡记忆', '工作岁月', '爱情婚姻', '历史亲历',
   '家族传承', '童年往事', '其他'
 ];
 
-const ThemeStories = ({ themes, stories, onStoryClick }) => {
+const ThemeStories = ({ themes, stories }) => {
   const [expandedTheme, setExpandedTheme] = useState(null);
 
-  // 将 themes 数据转换为按顺序排列
   const orderedThemes = THEMES_ORDER.map(themeName => {
     const themeData = themes.find(t => t.theme === themeName);
     return {
@@ -121,10 +405,6 @@ const ThemeStories = ({ themes, stories, onStoryClick }) => {
       count: themeData?.count || 0,
     };
   });
-
-  const toggleTheme = (themeName) => {
-    setExpandedTheme(prev => prev === themeName ? null : themeName);
-  };
 
   const getStoriesByTheme = (themeName) => {
     return stories.filter(s => (s.theme || '其他') === themeName);
@@ -154,7 +434,7 @@ const ThemeStories = ({ themes, stories, onStoryClick }) => {
                   ? 'bg-white border border-[#E5DED3]'
                   : 'bg-gray-100'
               }`}
-              onClick={() => hasStories && toggleTheme(name)}
+              onClick={() => hasStories && setExpandedTheme(isExpanded ? null : name)}
             >
               <div className="flex items-center justify-between">
                 <span className="text-2xl">{themeStyle.emoji}</span>
@@ -173,14 +453,13 @@ const ThemeStories = ({ themes, stories, onStoryClick }) => {
               </div>
             </div>
 
-            {/* 展开的故事列表 */}
             {isExpanded && themeStories.length > 0 && (
               <div className="mt-2 space-y-2 pl-2">
                 {themeStories.map(story => (
                   <div
                     key={story.id}
                     className="flex items-start gap-2 p-2 bg-white rounded border border-[#E5DED3] cursor-pointer hover:bg-gray-50"
-                    onClick={() => onStoryClick(story.id)}
+                    onClick={() => window.location.href = `/story/${story.id}`}
                   >
                     <span className="text-xs font-bold text-[#D4A574] shrink-0">
                       {story.year || '?'}
@@ -199,26 +478,32 @@ const ThemeStories = ({ themes, stories, onStoryClick }) => {
   );
 };
 
+// ========== 主组件 ==========
 const PersonCard = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [person, setPerson] = useState(null);
   const [stories, setStories] = useState([]);
   const [themes, setThemes] = useState([]);
+  const [relations, setRelations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('timeline');
+  const [selectedRelated, setSelectedRelated] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [personRes, storiesRes, themesRes] = await Promise.all([
+        const [personRes, storiesRes, themesRes, relationsRes] = await Promise.all([
           getPerson(id),
           getPersonStories(id),
           getPersonStoryThemes(id),
+          getPersonRelations(id),
         ]);
         setPerson(personRes.data);
         setStories(storiesRes.data);
         setThemes(themesRes.data);
+        setRelations(relationsRes.data || []);
       } catch (error) {
         console.error('获取数据失败:', error);
       } finally {
@@ -246,6 +531,16 @@ const PersonCard = () => {
     return '';
   };
 
+  const handleEdgeClick = (related) => {
+    setSelectedRelated(related);
+    setSidebarOpen(true);
+  };
+
+  const handleCloseSidebar = () => {
+    setSidebarOpen(false);
+    setTimeout(() => setSelectedRelated(null), 300);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#FAF7F2] flex items-center justify-center">
@@ -256,10 +551,9 @@ const PersonCard = () => {
 
   return (
     <div className="min-h-screen bg-[#FAF7F2] relative">
-      {/* Header 区域 - 白色卡片带浅棕色底边线 */}
+      {/* Header */}
       <div className="bg-white border-b border-[#E5DED3] pb-6 pt-4 px-4">
         <div className="max-w-md mx-auto">
-          {/* 返回按钮和编辑按钮行 */}
           <div className="flex justify-between items-start mb-4">
             <button
               onClick={() => navigate('/')}
@@ -275,7 +569,6 @@ const PersonCard = () => {
             </button>
           </div>
 
-          {/* 头像区域 */}
           <div className="flex flex-col items-center">
             {person?.avatar ? (
               <img
@@ -289,17 +582,14 @@ const PersonCard = () => {
               </div>
             )}
 
-            {/* 姓名 */}
             <h1 className="mt-4 text-2xl font-bold text-[#4A3728]">
               {person?.name || '未知'}
             </h1>
 
-            {/* 生卒年 */}
             <p className="mt-1 text-sm text-gray-500">
               {formatYears(person?.birth_year, person?.death_year)}
             </p>
 
-            {/* 一句话简介 */}
             <p className="mt-2 text-sm italic text-gray-500 text-center max-w-xs">
               {person?.bio || ''}
             </p>
@@ -337,24 +627,43 @@ const PersonCard = () => {
       <div className="p-4 pb-20">
         <div className="max-w-md mx-auto">
           {activeTab === 'relations' && (
-            <p className="text-gray-500">人际关系图（开发中）</p>
+            <RelationsGraph
+              currentPerson={person}
+              relations={relations}
+              stories={stories}
+              onEdgeClick={handleEdgeClick}
+            />
           )}
           {activeTab === 'timeline' && (
-            <Timeline
-              stories={stories}
-              person={person}
-              onStoryClick={(storyId) => navigate(`/story/${storyId}`)}
-            />
+            <Timeline stories={stories} person={person} />
           )}
           {activeTab === 'stories' && (
-            <ThemeStories
-              themes={themes}
-              stories={stories}
-              onStoryClick={(storyId) => navigate(`/story/${storyId}`)}
-            />
+            <ThemeStories themes={themes} stories={stories} />
           )}
         </div>
       </div>
+
+      {/* 关系侧边栏 */}
+      {selectedRelated && (
+        <>
+          <div
+            className="fixed inset-0 bg-black bg-opacity-20 z-40"
+            onClick={handleCloseSidebar}
+          />
+          <div
+            className={`fixed inset-y-0 right-0 w-[300px] bg-white shadow-2xl z-50 transform transition-transform duration-300 overflow-y-auto ${
+              sidebarOpen ? 'translate-x-0' : 'translate-x-full'
+            }`}
+          >
+            <RelationSidebar
+              currentPerson={person}
+              relatedPerson={selectedRelated}
+              stories={stories}
+              onClose={handleCloseSidebar}
+            />
+          </div>
+        </>
+      )}
 
       {/* 右下角固定 "+" 按钮 */}
       <button
