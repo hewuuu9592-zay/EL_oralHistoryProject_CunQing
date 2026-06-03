@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getPerson, getPersonStories, getPersonStoryThemes, getPersonRelations } from '../api';
-
+import { 
+  getPerson, getPersonStories, getPersonStoryThemes, getPersonRelations,
+  updatePerson, getRelationships, deleteRelationship, createRelationship,
+  getPersons   // 这个是获取所有人列表的，需要用到
+} from '../api';
 // ========== 主题颜色映射 ==========
 const THEME_COLORS = {
   '家乡记忆': { bg: '#DCFCE7', text: '#166534', emoji: '🏠' },
@@ -486,24 +489,41 @@ const PersonCard = () => {
   const [stories, setStories] = useState([]);
   const [themes, setThemes] = useState([]);
   const [relations, setRelations] = useState([]);
+  const [allPersons, setAllPersons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('timeline');
   const [selectedRelated, setSelectedRelated] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [allRelationships, setAllRelationships] = useState([]); // 全量关系
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    birth_year: '',
+    death_year: '',
+    gender: '男',
+    bio: '',
+    father_id: '',
+    mother_id: '',
+    spouse_id: ''
+  });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [personRes, storiesRes, themesRes, relationsRes] = await Promise.all([
+        const [personRes, storiesRes, themesRes, relationsRes, allRelsRes, allPersonsRes] = await Promise.all([
           getPerson(id),
           getPersonStories(id),
           getPersonStoryThemes(id),
           getPersonRelations(id),
+          getRelationships(), // 新增：获取全量关系
+          getPersons() // 新增：获取所有人
         ]);
         setPerson(personRes.data);
         setStories(storiesRes.data);
         setThemes(themesRes.data);
         setRelations(relationsRes.data || []);
+        setAllRelationships(allRelsRes.data || []);
+        setAllPersons(allPersonsRes.data || []);
       } catch (error) {
         console.error('获取数据失败:', error);
       } finally {
@@ -514,7 +534,92 @@ const PersonCard = () => {
   }, [id]);
 
   const handleEdit = () => {
-    alert('编辑');
+    if (!person) return;
+  
+    // 从 allRelationships 中找出当前人物的父亲、母亲、配偶
+    let fatherId = '';
+    let motherId = '';
+    let spouseId = '';
+  
+    allRelationships.forEach(rel => {
+      if (rel.relation_type === 'father' && rel.person_b_id === person.id) {
+        fatherId = rel.person_a_id;
+      } else if (rel.relation_type === 'mother' && rel.person_b_id === person.id) {
+        motherId = rel.person_a_id;
+      } else if (rel.relation_type === 'spouse') {
+        if (rel.person_a_id === person.id) {
+          spouseId = rel.person_b_id;
+        } else if (rel.person_b_id === person.id) {
+          spouseId = rel.person_a_id;
+        }
+      }
+    });
+  
+    setEditForm({
+      name: person.name || '',
+      birth_year: person.birth_year ? String(person.birth_year) : '',
+      death_year: person.death_year ? String(person.death_year) : '',
+      gender: person.gender || '男',
+      bio: person.bio || '',
+      father_id: fatherId,
+      mother_id: motherId,
+      spouse_id: spouseId,
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      // 1. 更新基本信息
+      await updatePerson(person.id, {
+        name: editForm.name,
+        gender: editForm.gender,
+        birth_year: editForm.birth_year ? parseInt(editForm.birth_year) : null,
+        death_year: editForm.death_year ? parseInt(editForm.death_year) : null,
+        bio: editForm.bio,
+      });
+  
+      // 2. 处理关系更新：先删除当前人物相关的所有父子关系和配偶关系
+      const relatedRels = allRelationships.filter(rel => {
+        if (rel.relation_type === 'father' && rel.person_b_id === person.id) return true;
+        if (rel.relation_type === 'mother' && rel.person_b_id === person.id) return true;
+        if (rel.relation_type === 'spouse' && (rel.person_a_id === person.id || rel.person_b_id === person.id)) return true;
+        return false;
+      });
+      await Promise.all(relatedRels.map(rel => deleteRelationship(rel.id)));
+  
+      // 3. 创建新的关系
+      const newRels = [];
+      if (editForm.father_id) {
+        newRels.push(createRelationship({ person_a_id: editForm.father_id, person_b_id: person.id, relation_type: 'father' }));
+      }
+      if (editForm.mother_id) {
+        newRels.push(createRelationship({ person_a_id: editForm.mother_id, person_b_id: person.id, relation_type: 'mother' }));
+      }
+      if (editForm.spouse_id) {
+        newRels.push(createRelationship({ person_a_id: editForm.spouse_id, person_b_id: person.id, relation_type: 'spouse' }));
+      }
+      await Promise.all(newRels);
+  
+      // 4. 刷新页面数据
+      const [updatedPerson, updatedStories, updatedThemes, updatedRelations, updatedAllRels] = await Promise.all([
+        getPerson(id),
+        getPersonStories(id),
+        getPersonStoryThemes(id),
+        getPersonRelations(id),
+        getRelationships()
+      ]);
+      setPerson(updatedPerson.data);
+      setStories(updatedStories.data);
+      setThemes(updatedThemes.data);
+      setRelations(updatedRelations.data || []);
+      setAllRelationships(updatedAllRels.data || []);
+      setShowEditModal(false);
+    } catch (err) {
+      console.error('保存失败:', err);
+      alert('保存失败，请检查网络或数据');
+    }
   };
 
   const getNameInitial = (name) => {
@@ -672,8 +777,134 @@ const PersonCard = () => {
       >
         +
       </button>
+
+      {/* 编辑弹窗 */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[10000]">
+          <div className="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl border-2 border-[#D4C4B0] max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-serif text-[#5C3D2E] mb-6 text-center">
+              编辑成员
+            </h2>
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-[#6B5344] mb-1">姓名</label>
+                <input 
+                  required
+                  className="w-full border-[#D4C4B0] border rounded-md p-2 focus:ring-[#C9A84C] focus:border-[#C9A84C] outline-none"
+                  value={editForm.name}
+                  onChange={e => setEditForm({...editForm, name: e.target.value})}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-[#6B5344] mb-1">出生年份</label>
+                  <input 
+                    className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+                    value={editForm.birth_year}
+                    onChange={e => setEditForm({...editForm, birth_year: e.target.value})}
+                    placeholder="如：1950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#6B5344] mb-1">逝世年份</label>
+                  <input 
+                    className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+                    value={editForm.death_year}
+                    onChange={e => setEditForm({...editForm, death_year: e.target.value})}
+                    placeholder="如：2020"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#6B5344] mb-1">性别</label>
+                <select 
+                  className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+                  value={editForm.gender}
+                  onChange={e => setEditForm({...editForm, gender: e.target.value})}
+                >
+                  <option>男</option>
+                  <option>女</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#6B5344] mb-1">简介</label>
+                <textarea 
+                  className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+                  rows="3"
+                  value={editForm.bio}
+                  onChange={e => setEditForm({...editForm, bio: e.target.value})}
+                  placeholder="简要描述生平..."
+                />
+              </div>
+
+              {/* 关系设置 */}
+              <div className="p-3 bg-[#FAF7F2] rounded-lg border border-[#D4C4B0] space-y-2">
+                <label className="block text-xs font-bold text-[#8B7355] uppercase mb-1">家族关系设置</label>
+                <div className="grid grid-cols-1 gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 w-12 text-right">父亲:</span>
+                    <select 
+                      className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none bg-white"
+                      value={editForm.father_id}
+                      onChange={e => setEditForm({...editForm, father_id: e.target.value})}
+                    >
+                      <option value="">(空)</option>
+                      {allPersons.map(p => p.gender === '男' && p.id !== person.id && (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 w-12 text-right">母亲:</span>
+                    <select 
+                      className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none bg-white"
+                      value={editForm.mother_id}
+                      onChange={e => setEditForm({...editForm, mother_id: e.target.value})}
+                    >
+                      <option value="">(空)</option>
+                      {allPersons.map(p => p.gender === '女' && p.id !== person.id && (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 w-12 text-right">配偶:</span>
+                    <select 
+                      className="flex-1 border-[#D4C4B0] border rounded p-1 text-xs outline-none bg-white"
+                      value={editForm.spouse_id}
+                      onChange={e => setEditForm({...editForm, spouse_id: e.target.value})}
+                    >
+                      <option value="">(无)</option>
+                      {allPersons.map(p => p.id !== person.id && (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button 
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 text-[#8B7355] hover:text-[#5C3D2E]"
+                >
+                  取消
+                </button>
+                <button 
+                  type="submit"
+                  className="px-6 py-2 bg-[#5C3D2E] text-white rounded-md hover:bg-[#3D281E] transition-colors"
+                >
+                  保存修改
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default PersonCard;
+
