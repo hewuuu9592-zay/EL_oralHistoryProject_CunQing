@@ -46,4 +46,8 @@ export const suggestMigrations = (id) => api.get(`/persons/${id}/migrations/sugg
 // 家族时间轴 API
 export const getFamilyTimeline = (params = {}) => api.get('/family/timeline', { params });
 
+// 家族迁徙地图 API
+export const getFamilyMigrations = () => api.get('/family/migrations');
+export const getFamilyMigrationPersons = () => api.get('/family/migrations/persons');
+
 export default api;

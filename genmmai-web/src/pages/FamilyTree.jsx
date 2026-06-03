@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deletePersonForce, deleteRelationship } from '../api'
 import FamilyTimeline from './FamilyTimeline'
+import FamilyMigrationMap from './FamilyMigrationMap'
 
 // 渲染单个人物卡片 
 const PersonCard = ({ person, onEdit, onDelete, navigate }) => { 
@@ -359,9 +360,7 @@ const FamilyTree = () => {
 
       {/* 家族迁徙地图 */}
       <div style={{ display: activeTab === 'map' ? 'block' : 'none' }}>
-        <div className="flex items-center justify-center h-[60vh]">
-          <p className="text-gray-500">家族迁徙地图 - 开发中</p>
-        </div>
+        <FamilyMigrationMap />
       </div>
 
       {/* 右上角成员数 - 仅在家族树 tab 显示 */}
