@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Text, DateTime, Boolean, JSON, ForeignKey
+from sqlalchemy import Column, String, Integer, Float, Text, DateTime, Boolean, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -16,10 +16,23 @@ class Person(Base):
     death_year = Column(Integer, nullable=True)
     bio = Column(Text, nullable=True)
     avatar_url = Column(String, nullable=True)
+    birthplace = Column(String, nullable=True)  # 出生地
     family_id = Column(String, default="default")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     stories = relationship("StoryPerson", back_populates="person")
+
+
+class MigrationRecord(Base):
+    __tablename__ = "migration_records"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    person_id = Column(String, ForeignKey("persons.id"), nullable=False)
+    place_name = Column(String, nullable=False)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    year = Column(Integer, nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class Relationship(Base):
     __tablename__ = "relationships"

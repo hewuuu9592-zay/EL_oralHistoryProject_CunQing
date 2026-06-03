@@ -62,6 +62,7 @@ class PersonBase(BaseModel):
     death_year: Optional[int] = None
     bio: Optional[str] = None
     avatar_url: Optional[str] = None
+    birthplace: Optional[str] = None
     family_id: Optional[str] = "default"
 
 class PersonCreate(PersonBase):
@@ -164,6 +165,71 @@ class StoryUpdate(BaseModel):
     transcript: Optional[str] = None
     year: Optional[int] = None
     theme: Optional[str] = None
+
+# ============= Migration Records =============
+
+class MigrationRecordBase(BaseModel):
+    place_name: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+
+class MigrationRecordCreate(MigrationRecordBase):
+    pass
+
+class MigrationRecordUpdate(BaseModel):
+    place_name: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+
+class MigrationRecordResponse(MigrationRecordBase):
+    id: str
+    person_id: str
+    class Config:
+        from_attributes = True
+
+class MigrationSuggestResponse(BaseModel):
+    """AI 建议的迁徙节点"""
+    place_name: str
+    year: Optional[int] = None
+    description: Optional[str] = None
+    confidence: str  # "故事中明确提到" / "推测" / "可能"
+
+# ============= Geocoding Helper =============
+
+def geocode_place(place_name: str) -> Optional[dict]:
+    """调用高德地图 API 获取地名坐标"""
+    import requests as httpx_requests
+
+    api_key = os.getenv("AMAP_API_KEY", "")
+    if not api_key:
+        return None
+
+    try:
+        url = "https://restapi.amap.com/v3/Geocode/geo"
+        params = {
+            "key": api_key,
+            "address": place_name,
+            "output": "json"
+        }
+        response = httpx_requests.get(url, params=params, timeout=5)
+        data = response.json()
+
+        if data.get("status") == "1" and data.get("geocodes"):
+            geocode = data["geocodes"][0]
+            location = geocode.get("location", "")
+            if location:
+                lng, lat = location.split(",")
+                return {
+                    "latitude": float(lat),
+                    "longitude": float(lng)
+                }
+    except Exception as e:
+        print(f"高德 API 调用失败: {str(e)}")
+    return None
 
 # ============= API Endpoints =============
 
@@ -459,6 +525,197 @@ def get_person_relations(person_id: str, db: Session = Depends(get_db)):
     # 按共同故事数量倒序
     result.sort(key=lambda x: x["story_count"], reverse=True)
     return result
+
+
+# ============= Migration Records API =============
+
+@app.get("/persons/{person_id}/migrations", response_model=List[MigrationRecordResponse])
+def read_person_migrations(person_id: str, db: Session = Depends(get_db)):
+    """返回该人物所有迁徙记录，按 year 升序"""
+    # 检查人物是否存在
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="人物不存在")
+
+    records = db.query(models.MigrationRecord).filter(
+        models.MigrationRecord.person_id == person_id
+    ).order_by(
+        models.MigrationRecord.year.is_(None),
+        models.MigrationRecord.year.asc()
+    ).all()
+    return records
+
+
+@app.post("/persons/{person_id}/migrations", response_model=MigrationRecordResponse)
+def create_migration_record(person_id: str, migration: MigrationRecordCreate, db: Session = Depends(get_db)):
+    """新增一条迁徙记录"""
+    # 检查人物是否存在
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="人物不存在")
+
+    # 如果没有提供坐标，尝试调用高德 API 获取
+    latitude = migration.latitude
+    longitude = migration.longitude
+    if not latitude or not longitude:
+        geo_result = geocode_place(migration.place_name)
+        if geo_result:
+            latitude = geo_result["latitude"]
+            longitude = geo_result["longitude"]
+
+    db_record = models.MigrationRecord(
+        person_id=person_id,
+        place_name=migration.place_name,
+        latitude=latitude,
+        longitude=longitude,
+        year=migration.year,
+        description=migration.description
+    )
+    db.add(db_record)
+    db.commit()
+    db.refresh(db_record)
+    return db_record
+
+
+@app.delete("/persons/{person_id}/migrations/{mid}")
+def delete_migration_record(person_id: str, mid: str, db: Session = Depends(get_db)):
+    """删除一条迁徙记录"""
+    record = db.query(models.MigrationRecord).filter(
+        models.MigrationRecord.id == mid,
+        models.MigrationRecord.person_id == person_id
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="迁徙记录不存在")
+
+    db.delete(record)
+    db.commit()
+    return {"message": "迁徙记录已删除"}
+
+
+@app.patch("/persons/{person_id}/migrations/{mid}", response_model=MigrationRecordResponse)
+def update_migration_record(person_id: str, mid: str, migration_update: MigrationRecordUpdate, db: Session = Depends(get_db)):
+    """编辑一条迁徙记录"""
+    record = db.query(models.MigrationRecord).filter(
+        models.MigrationRecord.id == mid,
+        models.MigrationRecord.person_id == person_id
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="迁徙记录不存在")
+
+    update_data = migration_update.model_dump(exclude_unset=True)
+
+    # 如果修改了地名且没有提供坐标，重新获取坐标
+    if "place_name" in update_data and ("latitude" not in update_data or not update_data.get("latitude")):
+        geo_result = geocode_place(update_data["place_name"])
+        if geo_result:
+            update_data["latitude"] = geo_result["latitude"]
+            update_data["longitude"] = geo_result["longitude"]
+
+    for key, value in update_data.items():
+        if value is not None:
+            setattr(record, key, value)
+
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def extract_locations_from_transcripts(person_id: str, db: Session) -> List[dict]:
+    """从该人物所有故事的 transcript 中提取地名和年份"""
+    import requests as httpx_requests
+
+    api_key = os.getenv("ARK_API_KEY", "")
+    if not api_key:
+        return []
+
+    # 获取该人物所有故事
+    sp_records = db.query(models.StoryPerson).filter(
+        models.StoryPerson.person_id == person_id
+    ).all()
+    story_ids = [sp.story_id for sp in sp_records]
+    if not story_ids:
+        return []
+
+    stories = db.query(models.Story).filter(
+        models.Story.id.in_(story_ids),
+        models.Story.transcript.isnot(None),
+        models.Story.transcript != ""
+    ).all()
+
+    # 拼接所有 transcript
+    all_transcripts = []
+    for story in stories:
+        if story.transcript:
+            year_info = f"（{story.year}年）" if story.year else ""
+            all_transcripts.append(f"故事{year_info}：{story.transcript}")
+
+    if not all_transcripts:
+        return []
+
+    combined_text = "\n\n".join(all_transcripts)
+
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://ark.cn-beijing.volces.com/api/v3",
+        )
+
+        prompt = f"""从以下口述故事中提取可能的地名和时间信息。
+
+要求：
+- 只提取明确的地点移动/迁徙相关事件
+- 如果提到的是模糊地址（如"村里"、"镇上"），请转换为标准地名（如 xx省xx市xx县xx镇）
+- 年份必须是 4 位数字整数
+
+只返回 JSON 数组格式，不要任何其他内容。格式示例：
+[
+  {{"place_name": "xx省xx市", "year": 1990, "description": "迁到这个地方", "confidence": "故事中明确提到"}},
+  {{"place_name": "xx省xx市", "year": 2000, "description": "搬到这里定居", "confidence": "推测"}},
+  {{"place_name": "xx省xx市", "year": null, "description": "来此地探亲", "confidence": "可能"}}
+]
+
+注意：
+- confidence 取值："故事中明确提到"（文本直接说了时间地点）/ "推测"（根据上下文推断）/ "可能"（不太确定）
+- 如果没有提取到任何迁徙相关地点，返回空数组 []
+
+故事内容：
+{combined_text}"""
+
+        response = client.chat.completions.create(
+            model="ep-20260521233914-gllp4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+
+        result_text = response.choices[0].message.content.strip()
+
+        # 尝试解析 JSON
+        try:
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1].split("```")[0]
+
+            return json_lib.loads(result_text.strip())
+        except json_lib.JSONDecodeError:
+            print(f"解析 AI 返回 JSON 失败: {result_text}")
+            return []
+
+    except Exception as e:
+        print(f"豆包 API 调用失败: {str(e)}")
+        return []
+
+
+@app.get("/persons/{person_id}/migrations/suggest", response_model=List[MigrationSuggestResponse])
+def suggest_migrations(person_id: str, db: Session = Depends(get_db)):
+    """从故事 transcript 中提取建议的迁徙节点"""
+    # 检查人物是否存在
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="人物不存在")
+
+    suggestions = extract_locations_from_transcripts(person_id, db)
+    return suggestions
 
 
 # ============= FunASR Local Transcription Helper =============
