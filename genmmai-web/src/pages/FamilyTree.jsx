@@ -6,7 +6,7 @@ import { getPersons, getRelationships, createPerson, createRelationship, updateP
 const PersonCard = ({ person, onEdit, onDelete, navigate }) => { 
   const lifeSpan = person.death_year 
     ? `${person.birth_year || '?'}-${person.death_year}` 
-    : person.birth_year ? `${person.birth_year}+` : '' 
+    : person.birth_year ? `${person.birth_year}` : '' 
   
   return ( 
     <div 
@@ -136,6 +136,7 @@ const FamilyTree = () => {
   const [persons, setPersons] = useState([])
   const [relationships, setRelationships] = useState([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('tree') // tree | history | map
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingPerson, setEditingPerson] = useState(null)
   const [newPerson, setNewPerson] = useState({
@@ -280,12 +281,34 @@ const FamilyTree = () => {
         <h1 className="text-4xl font-serif text-[#5C3D2E]">根脉</h1>
       </div>
 
-      {/* 右上角成员数 */}
-      <div className="absolute top-6 right-6 z-10 text-[#5C3D2E]">
-        成员数：{persons.length}人
+      {/* Tab 导航 */}
+      <div className="bg-white border-b border-[#E5DED3] pt-16">
+        <div className="max-w-md mx-auto flex">
+          {[
+            { key: 'tree', label: '家族树' },
+            { key: 'history', label: '家族变迁史' },
+            { key: 'map', label: '家族迁徙地图' },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 py-3 text-sm relative ${
+                activeTab === tab.key
+                  ? 'text-[#4A3728] font-medium'
+                  : 'text-gray-400'
+              }`}
+            >
+              {tab.label}
+              {activeTab === tab.key && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#4A3728]" />
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* 族谱内容 */}
+      {/* 内容区域 */}
+      <div className="pt-16 pb-20">
       {loading ? (
         <div className="flex items-center justify-center h-screen">
           <div className="text-[#5C3D2E]">加载中...</div>
@@ -326,9 +349,31 @@ const FamilyTree = () => {
           </div>
         </div>
       )}
+      </div>
 
-      {/* 右下角添加按钮 */}
-      {persons.length > 0 && (
+      {/* 家族变迁史 */}
+      <div style={{ display: activeTab === 'history' ? 'block' : 'none' }}>
+        <div className="flex items-center justify-center h-[60vh]">
+          <p className="text-gray-500">家族变迁史 - 开发中</p>
+        </div>
+      </div>
+
+      {/* 家族迁徙地图 */}
+      <div style={{ display: activeTab === 'map' ? 'block' : 'none' }}>
+        <div className="flex items-center justify-center h-[60vh]">
+          <p className="text-gray-500">家族迁徙地图 - 开发中</p>
+        </div>
+      </div>
+
+      {/* 右上角成员数 - 仅在家族树 tab 显示 */}
+      {activeTab === 'tree' && (
+        <div className="absolute top-6 right-6 z-10 text-[#5C3D2E]">
+          成员数：{persons.length}人
+        </div>
+      )}
+
+      {/* 右下角添加按钮 - 仅在家族树 tab 且有成员时显示 */}
+      {activeTab === 'tree' && persons.length > 0 && (
         <button
           type="button"
           onClick={(e) => handleAddPerson(e)}

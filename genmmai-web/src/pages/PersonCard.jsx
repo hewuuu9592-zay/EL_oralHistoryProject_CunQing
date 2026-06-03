@@ -501,7 +501,7 @@ const PersonCard = () => {
     name: '',
     birth_year: '',
     death_year: '',
-    gender: '男',
+    gender: '女',
     bio: '',
     father_id: '',
     mother_id: '',
@@ -637,7 +637,7 @@ const PersonCard = () => {
       if (deathYear) {
         return `${birthYear} - ${deathYear}`;
       }
-      return `${birthYear}+`;
+      return `${birthYear}`;
     }
     return '';
   };
