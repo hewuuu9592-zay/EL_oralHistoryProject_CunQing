@@ -198,7 +198,7 @@ const AddMigrationModal = ({ onClose, onSave, initialData, personId }) => {
 
     try {
       const response = await fetch(
-        `https://restapi.amap.com/v3/place/text?key=YOUR_AMAP_KEY&keywords=${encodeURIComponent(keyword)}&types=190100|190200|190300|190400&city=china&output=json`
+        `https://restapi.amap.com/v3/place/text?key=302ac82dfcd78411387579fdc6613ec4&keywords=${encodeURIComponent(keyword)}&types=190100|190200|190300|190400&city=china&output=json`
       );
       const data = await response.json();
 
