@@ -36,4 +36,11 @@ export const createStoryPerson = (data) => api.post('/story-persons', data);
 
 export const tagStory = (id, transcript) => api.post(`/stories/${id}/tag`, { transcript });
 
+// 迁徙记录 API
+export const getPersonMigrations = (id) => api.get(`/persons/${id}/migrations`);
+export const createMigration = (id, data) => api.post(`/persons/${id}/migrations`, data);
+export const updateMigration = (personId, migrationId, data) => api.patch(`/persons/${personId}/migrations/${migrationId}`, data);
+export const deleteMigration = (personId, migrationId) => api.delete(`/persons/${personId}/migrations/${migrationId}`);
+export const suggestMigrations = (id) => api.get(`/persons/${id}/migrations/suggest`);
+
 export default api;

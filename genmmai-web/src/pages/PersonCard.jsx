@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
+import {
   getPerson, getPersonStories, getPersonStoryThemes, getPersonRelations,
   updatePerson, getRelationships, deleteRelationship, createRelationship,
   getPersons   // 这个是获取所有人列表的，需要用到
 } from '../api';
+import MigrationMapTab from './MigrationMapTab';
 // ========== 主题颜色映射 ==========
 const THEME_COLORS = {
   '家乡记忆': { bg: '#DCFCE7', text: '#166534', emoji: '🏠' },
@@ -714,6 +715,7 @@ const PersonCard = () => {
             { key: 'relations', label: '人际关系图' },
             { key: 'timeline', label: '个人时间轴' },
             { key: 'stories', label: '主题故事集' },
+            { key: 'migrations', label: '迁徙地图' },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -749,6 +751,9 @@ const PersonCard = () => {
           )}
           {activeTab === 'stories' && (
             <ThemeStories themes={themes} stories={stories} />
+          )}
+          {activeTab === 'migrations' && (
+            <MigrationMapTab personId={id} />
           )}
         </div>
       </div>
