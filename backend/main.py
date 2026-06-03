@@ -1067,6 +1067,92 @@ def tag_story(story_id: str, request: TagRequest, db: Session = Depends(get_db))
         raise HTTPException(status_code=500, detail=f"AI 标注失败：{str(e)}")
 
 
+# ============= Family Timeline API =============
+
+class FamilyTimelineStory(BaseModel):
+    """家族时间轴中的故事"""
+    id: str
+    summary: Optional[str] = None
+    year: Optional[int] = None
+    decade: Optional[str] = None
+    theme: Optional[str] = None
+    audio_url: Optional[str] = None
+    transcript: Optional[str] = None
+    persons: List[dict] = []
+
+    class Config:
+        from_attributes = True
+
+
+@app.get("/family/timeline", response_model=List[FamilyTimelineStory])
+def read_family_timeline(
+    theme: Optional[str] = None,
+    person_id: Optional[str] = None,
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """家族总时间轴 - 查询所有故事，支持主题/人物/年代过滤"""
+    query = db.query(models.Story)
+
+    # 按主题过滤
+    if theme:
+        query = query.filter(models.Story.theme == theme)
+
+    # 按人物过滤
+    if person_id:
+        sp_records = db.query(models.StoryPerson).filter(
+            models.StoryPerson.person_id == person_id
+        ).all()
+        story_ids = [sp.story_id for sp in sp_records]
+        query = query.filter(models.Story.id.in_(story_ids))
+
+    # 按年代范围过滤
+    if year_from is not None:
+        query = query.filter(models.Story.year >= year_from)
+    if year_to is not None:
+        query = query.filter(models.Story.year <= year_to)
+
+    # 按 year 升序，year 为空的放最后
+    stories = query.order_by(
+        models.Story.year.is_(None),
+        models.Story.year.asc()
+    ).all()
+
+    # 构建返回结果，为每条故事附加人物列表
+    result = []
+    for story in stories:
+        # 获取关联的人物列表
+        sp_records = db.query(models.StoryPerson).filter(
+            models.StoryPerson.story_id == story.id
+        ).all()
+
+        persons = []
+        for sp in sp_records:
+            person = db.query(models.Person).filter(
+                models.Person.id == sp.person_id
+            ).first()
+            if person:
+                persons.append({
+                    "id": person.id,
+                    "name": person.name,
+                    "avatar_url": person.avatar_url
+                })
+
+        result.append(FamilyTimelineStory(
+            id=story.id,
+            summary=story.summary,
+            year=story.year,
+            decade=story.decade,
+            theme=story.theme,
+            audio_url=story.audio_url,
+            transcript=story.transcript,
+            persons=persons
+        ))
+
+    return result
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
