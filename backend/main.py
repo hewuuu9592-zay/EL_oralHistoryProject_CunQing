@@ -1153,6 +1153,53 @@ def read_family_timeline(
     return result
 
 
+# ============= Family Migrations API =============
+
+@app.get("/family/migrations")
+def read_family_migrations(db: Session = Depends(get_db)):
+    """家族总迁徙地图 - 查询所有人物的所有迁徙记录"""
+    records = db.query(models.MigrationRecord).join(
+        models.Person,
+        models.MigrationRecord.person_id == models.Person.id
+    ).order_by(
+        models.MigrationRecord.year.is_(None),
+        models.MigrationRecord.year.asc()
+    ).all()
+
+    result = []
+    for record in records:
+        # 重新查询人物信息
+        person = db.query(models.Person).filter(models.Person.id == record.person_id).first()
+        result.append({
+            "id": record.id,
+            "person_id": record.person_id,
+            "person_name": person.name if person else None,
+            "person_avatar": person.avatar_url if person else None,
+            "place_name": record.place_name,
+            "latitude": record.latitude,
+            "longitude": record.longitude,
+            "year": record.year,
+            "description": record.description
+        })
+
+    return result
+
+
+@app.get("/family/migrations/persons")
+def read_family_migrations_persons(db: Session = Depends(get_db)):
+    """返回有迁徙记录的人物列表（用于前端按人物过滤）"""
+    # 找出有迁徙记录的人物
+    person_ids = db.query(models.MigrationRecord.person_id).distinct().all()
+    person_ids = [p[0] for p in person_ids]
+
+    if not person_ids:
+        return []
+
+    persons = db.query(models.Person).filter(models.Person.id.in_(person_ids)).all()
+
+    return [{"id": p.id, "name": p.name, "avatar_url": p.avatar_url} for p in persons]
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
