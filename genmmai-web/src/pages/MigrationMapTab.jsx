@@ -135,10 +135,8 @@ const MapView = ({ migrations, onMarkerClick, mapContainerRef }) => {
     }
 
     // 自动缩放
-    if (validMigrations.length > 0) {
-      map.setFitView(validMigrations.map(m =>
-        new window.AMap.LngLat(m.longitude, m.latitude)
-      ));
+    if (markersRef.current.length > 0) {
+      map.setFitView(markersRef.current);  // ✅ Marker 对象有 getBounds 方法
     }
   }, [migrations]);
 
@@ -198,7 +196,7 @@ const AddMigrationModal = ({ onClose, onSave, initialData, personId }) => {
 
     try {
       const response = await fetch(
-        `https://restapi.amap.com/v3/place/text?key=302ac82dfcd78411387579fdc6613ec4&keywords=${encodeURIComponent(keyword)}&types=190100|190200|190300|190400&city=china&output=json`
+        `https://restapi.amap.com/v3/place/text?key=075e5825f867290cfbe0fd1113a27694&keywords=${encodeURIComponent(keyword)}&types=190100|190200|190300|190400&city=china&output=json`
       );
       const data = await response.json();
 
