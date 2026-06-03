@@ -873,7 +873,7 @@ def create_story_person(sp: StoryPersonCreate, db: Session = Depends(get_db)):
     return db_sp
 
 
-def extract_structured_info(transcript: str) -> dict:
+def extract_structured_info(transcript: str, db=None) -> dict:
     """调用豆包模型提取结构化信息"""
     api_key = os.getenv("ARK_API_KEY", "")
     if not api_key:
@@ -885,6 +885,24 @@ def extract_structured_info(transcript: str) -> dict:
             "persons_mentioned": []
         }
 
+    # 动态获取主题列表
+    theme_options = "其他"
+    try:
+        if db:
+            themes = db.query(models.Theme).order_by(models.Theme.sort_order.asc()).all()
+            theme_options = "/".join([t.name for t in themes])
+        else:
+            from database import SessionLocal
+            db_temp = SessionLocal()
+            try:
+                themes = db_temp.query(models.Theme).order_by(models.Theme.sort_order.asc()).all()
+                theme_options = "/".join([t.name for t in themes])
+            finally:
+                db_temp.close()
+    except Exception as e:
+        print(f"获取主题列表失败: {e}")
+        theme_options = "其他"
+
     try:
         client = OpenAI(
             api_key=api_key,
@@ -895,7 +913,7 @@ def extract_structured_info(transcript: str) -> dict:
   "summary": "一句话摘要，20字以内，要有温度感",
   "year": 故事发生年份整数（不确定则返回null）,
   "decade": "年代描述，如1960年代（不确定则返回null）",
-  "theme": "从以下选一个最合适的：家乡记忆/工作岁月/爱情婚姻/历史亲历/家族传承/童年往事/其他",
+  "theme": "从以下选一个最合适的：{theme_options}",
   "persons_mentioned": ["故事中提到的人名列表，没有则为空数组"]
 }}故事内容：{transcript}"""
 
@@ -1040,8 +1058,8 @@ def tag_story(story_id: str, request: TagRequest, db: Session = Depends(get_db))
     db.commit()
 
     try:
-        # 调用豆包模型提取结构化信息
-        structured = extract_structured_info(transcript)
+        # 调用豆包模型提取结构化信息（传入 db 获取主题列表）
+        structured = extract_structured_info(transcript, db)
 
         # 更新数据库
         story.summary = structured.get("summary", "")
@@ -1330,6 +1348,29 @@ def update_theme(theme_id: str, theme_update: ThemeUpdate, db: Session = Depends
     db.commit()
     db.refresh(theme)
     return theme
+
+
+@app.get("/themes/with-count")
+def read_themes_with_count(db: Session = Depends(get_db)):
+    """获取主题列表（带故事数量）"""
+    themes = db.query(models.Theme).order_by(models.Theme.sort_order.asc()).all()
+
+    result = []
+    for theme in themes:
+        # 统计使用该主题的故事数量
+        story_count = db.query(models.Story).filter(models.Story.theme == theme.name).count()
+        result.append({
+            "id": theme.id,
+            "name": theme.name,
+            "emoji": theme.emoji,
+            "color_bg": theme.color_bg,
+            "color_text": theme.color_text,
+            "is_default": theme.is_default,
+            "sort_order": theme.sort_order,
+            "story_count": story_count
+        })
+
+    return result
 
 
 if __name__ == "__main__":

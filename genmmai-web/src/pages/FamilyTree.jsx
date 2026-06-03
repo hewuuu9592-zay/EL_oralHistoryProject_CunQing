@@ -279,8 +279,15 @@ const FamilyTree = () => {
   return (
     <div className="relative min-h-screen bg-[#FAF7F2]">
       {/* 左上角 Logo */}
-      <div className="absolute top-6 left-6 z-10">
+      <div className="absolute top-6 left-6 z-10 flex items-center gap-4">
         <h1 className="text-4xl font-serif text-[#5C3D2E]">根脉</h1>
+        <button
+          onClick={() => navigate('/settings')}
+          className="text-2xl text-[#8B7355] hover:text-[#5C3D2E]"
+          title="设置"
+        >
+          ⚙️
+        </button>
       </div>
 
       {/* Tab 导航 */}

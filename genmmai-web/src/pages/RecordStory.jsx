@@ -1,20 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { getPerson, getPersons, getSuggestQuestion, uploadAndProcessAudio, updateStory, getStory, createStoryPerson, tagStory } from '../api';
+import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
 const DEFAULT_QUESTION = "您有什么想留给后代的故事吗？";
 
-const THEMES = [
-  { name: '家乡记忆', emoji: '🏠' },
-  { name: '工作岁月', emoji: '💼' },
-  { name: '爱情婚姻', emoji: '💕' },
-  { name: '历史亲历', emoji: '📜' },
-  { name: '家族传承', emoji: '🌳' },
-  { name: '童年往事', emoji: '🧒' },
-  { name: '其他', emoji: '📝' },
-];
-
 const RecordStory = () => {
+  const { themes, getThemeStyle, loading: themeLoading } = useTheme();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const personId = searchParams.get('personId');
@@ -419,19 +411,23 @@ const RecordStory = () => {
             <div>
               <label className="text-xs text-gray-500">主题标签（多选）</label>
               <div className="flex flex-wrap gap-2 mt-1">
-                {THEMES.map(({ name, emoji }) => (
-                  <button
-                    key={name}
-                    onClick={() => toggleTheme(name)}
-                    className={`px-3 py-1.5 rounded-full text-sm ${
-                      selectedThemes.includes(name)
-                        ? 'bg-[#4A3728] text-white'
-                        : 'bg-white border border-[#E5DED3] text-[#4A3728]'
-                    }`}
-                  >
-                    {emoji} {name}
-                  </button>
-                ))}
+                {(themes || []).map(theme => {
+                  const style = getThemeStyle(themes, theme.name);
+                  return (
+                    <button
+                      key={theme.name}
+                      onClick={() => toggleTheme(theme.name)}
+                      className={`px-3 py-1.5 rounded-full text-sm ${
+                        selectedThemes.includes(theme.name)
+                          ? 'bg-[#4A3728] text-white'
+                          : 'bg-white border border-[#E5DED3] text-[#4A3728]'
+                      }`}
+                      style={selectedThemes.includes(theme.name) ? {} : { backgroundColor: style.bg, color: style.text }}
+                    >
+                      {style.emoji} {theme.name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
