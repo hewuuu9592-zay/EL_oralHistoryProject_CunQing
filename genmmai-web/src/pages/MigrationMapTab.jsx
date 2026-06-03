@@ -8,39 +8,18 @@ import {
 } from '../api';
 
 // ========== 地图组件 ==========
-// MapView 组件加 onResize prop
 const MapView = ({ migrations, onMarkerClick, mapContainerRef, onResize }) => {
-  // 初始化 useEffect 里，地图创建完后加这行：
-  if (onResize) onResize(() => mapInstanceRef.current?.resize())
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
   const polylinesRef = useRef([]);
+  const updateMarkersRef = useRef(null);
 
-  // 初始化地图
-  useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
-
-    // 确保 AMap 已加载
-    if (!window.AMap) {
-      console.warn('AMap 未加载');
-      return;
-    }
-
-    const map = new window.AMap.Map(mapContainerRef.current, {
-      zoom: 4,
-      center: [105, 36], // 中国中心
-      mapStyle: 'amap://styles/normal',
-    });
-
-    mapInstanceRef.current = map;
-  }, []);
-
-  // 更新markers和路线
-  useEffect(() => {
+  // 更新 markers 和路线 - 抽取成独立函数
+  const updateMarkers = () => {
     if (!mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
 
-    // 清除旧的markers和路线
+    // 清除旧的 markers 和路线
     markersRef.current.forEach(m => map.remove(m));
     polylinesRef.current.forEach(p => map.remove(p));
     markersRef.current = [];
@@ -49,12 +28,11 @@ const MapView = ({ migrations, onMarkerClick, mapContainerRef, onResize }) => {
     const validMigrations = migrations.filter(m => m.latitude && m.longitude);
 
     if (validMigrations.length === 0) {
-      // 无节点，显示中国全图
       map.setZoomAndCenter(4, [105, 36]);
       return;
     }
 
-    // 创建markers
+    // 创建 markers
     validMigrations.forEach((migration, index) => {
       const marker = new window.AMap.Marker({
         position: [migration.longitude, migration.latitude],
@@ -97,7 +75,6 @@ const MapView = ({ migrations, onMarkerClick, mapContainerRef, onResize }) => {
     if (sorted.length >= 2) {
       const path = sorted.map(m => [m.longitude, m.latitude]);
 
-      // 带箭头的折线
       const polyline = new window.AMap.Polyline({
         path,
         strokeColor: '#5C3D2E',
@@ -139,8 +116,68 @@ const MapView = ({ migrations, onMarkerClick, mapContainerRef, onResize }) => {
 
     // 自动缩放
     if (markersRef.current.length > 0) {
-      map.setFitView(markersRef.current);  // ✅ Marker 对象有 getBounds 方法
+      map.setFitView(markersRef.current);
     }
+  };
+
+  // 保存更新函数到 ref，让外部可以调用
+  updateMarkersRef.current = updateMarkers;
+
+  // 初始化地图
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    // 确保 AMap ���加载
+    if (!window.AMap) {
+      console.warn('AMap 未加载');
+      return;
+    }
+
+    // 用轮询等待容器有实际尺寸
+    const tryInit = () => {
+      const container = mapContainerRef.current;
+      if (!container) return;
+
+      const { width, height } = container.getBoundingClientRect();
+
+      if (width === 0 || height === 0) {
+        setTimeout(tryInit, 100);
+        return;
+      }
+
+      // 容器有尺寸了，初始化地图
+      const map = new window.AMap.Map(container, {
+        zoom: 4,
+        center: [105, 36],
+        mapStyle: 'amap://styles/normal',
+      });
+
+      mapInstanceRef.current = map;
+
+      if (onResize) {
+        onResize(() => mapInstanceRef.current?.resize());
+      }
+
+      // 等地图底图加载完成后再 resize + 更新 markers
+      map.on('complete', () => {
+        mapInstanceRef.current?.resize()
+        setTimeout(() => {
+          if (updateMarkersRef.current) updateMarkersRef.current()
+        }, 50)
+      })
+    };
+
+    tryInit();
+
+    return () => {
+      mapInstanceRef.current?.destroy();
+      mapInstanceRef.current = null;
+    };
+  }, []);
+
+  // migrations 变化时更新 markers
+  useEffect(() => {
+    updateMarkers();
   }, [migrations]);
 
   return (
