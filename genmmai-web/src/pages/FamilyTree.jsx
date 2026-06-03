@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deletePersonForce, deleteRelationship } from '../api'
+import FamilyTimeline from './FamilyTimeline'
 
 // 渲染单个人物卡片 
 const PersonCard = ({ person, onEdit, onDelete, navigate }) => { 
@@ -307,8 +308,8 @@ const FamilyTree = () => {
         </div>
       </div>
 
-      {/* 内容区域 */}
-      <div className="pt-16 pb-20">
+      {/* 内容区域 - 仅在家族树 tab 显示 */}
+      <div className="pt-16 pb-20" style={{ display: activeTab === 'tree' ? 'block' : 'none' }}>
       {loading ? (
         <div className="flex items-center justify-center h-screen">
           <div className="text-[#5C3D2E]">加载中...</div>
@@ -353,9 +354,7 @@ const FamilyTree = () => {
 
       {/* 家族变迁史 */}
       <div style={{ display: activeTab === 'history' ? 'block' : 'none' }}>
-        <div className="flex items-center justify-center h-[60vh]">
-          <p className="text-gray-500">家族变迁史 - 开发中</p>
-        </div>
+        <FamilyTimeline />
       </div>
 
       {/* 家族迁徙地图 */}

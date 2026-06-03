@@ -43,4 +43,7 @@ export const updateMigration = (personId, migrationId, data) => api.patch(`/pers
 export const deleteMigration = (personId, migrationId) => api.delete(`/persons/${personId}/migrations/${migrationId}`);
 export const suggestMigrations = (id) => api.get(`/persons/${id}/migrations/suggest`);
 
+// 家族时间轴 API
+export const getFamilyTimeline = (params = {}) => api.get('/family/timeline', { params });
+
 export default api;
