@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   getPersonMigrations,
   createMigration,
@@ -6,504 +6,91 @@ import {
   deleteMigration,
   suggestMigrations,
 } from '../api';
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
 
-// ========== 地图组件 ==========
-const MapView = ({ migrations, onMarkerClick, mapContainerRef, onResize }) => {
-  const mapInstanceRef = useRef(null);
-  const markersRef = useRef([]);
-  const polylinesRef = useRef([]);
-  const updateMarkersRef = useRef(null);
+// 自定义暖金色圆形 marker
+const createIcon = (year) => L.divIcon({
+  className: '',
+  html: `<div style="
+    width:36px;height:36px;background:#C9A84C;
+    border-radius:50%;display:flex;align-items:center;
+    justify-content:center;color:white;font-weight:bold;
+    font-size:12px;border:2px solid #5C3D2E;
+    box-shadow:0 2px 6px rgba(0,0,0,0.3);
+  ">${year ? String(year).slice(-2) : '?'}</div>`,
+  iconSize: [36, 36],
+  iconAnchor: [18, 18],
+});
 
-  // 更新 markers 和路线 - 抽取成独立函数
-  const updateMarkers = () => {
-    if (!mapInstanceRef.current) return;
-    const map = mapInstanceRef.current;
+// 自动适配所有点的组件
+const FitBounds = ({ migrations }) => {
+  const map = useMap();
+  const validMigrations = migrations.filter(m => m.latitude && m.longitude);
 
-    // 清除旧的 markers 和路线
-    markersRef.current.forEach(m => map.remove(m));
-    polylinesRef.current.forEach(p => map.remove(p));
-    markersRef.current = [];
-    polylinesRef.current = [];
-
-    const validMigrations = migrations.filter(m => m.latitude && m.longitude);
-
-    if (validMigrations.length === 0) {
-      map.setZoomAndCenter(4, [105, 36]);
-      return;
-    }
-
-    // 创建 markers
-    validMigrations.forEach((migration, index) => {
-      const marker = new window.AMap.Marker({
-        position: [migration.longitude, migration.latitude],
-        title: `${migration.place_name} (${migration.year || '?'})`,
-        ext: {
-          data: migration,
-        },
-        content: `
-          <div style="
-            width: 36px;
-            height: 36px;
-            background: #C9A84C;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 12px;
-            border: 2px solid #5C3D2E;
-            cursor: pointer;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-          ">
-            ${migration.year ? String(migration.year).slice(-2) : '?'}
-          </div>
-        `,
-      });
-
-      marker.on('click', () => {
-        onMarkerClick(migration);
-      });
-
-      markersRef.current.push(marker);
-      map.add(marker);
-    });
-
-    // 按年份排序，创建连线
-    const sorted = [...validMigrations].sort((a, b) => (a.year || 0) - (b.year || 0));
-
-    if (sorted.length >= 2) {
-      const path = sorted.map(m => [m.longitude, m.latitude]);
-
-      const polyline = new window.AMap.Polyline({
-        path,
-        strokeColor: '#5C3D2E',
-        strokeWeight: 3,
-        strokeOpacity: 0.8,
-        isOutline: false,
-        lineJoin: 'round',
-      });
-
-      polylinesRef.current.push(polyline);
-      map.add(polyline);
-
-      // 箭头标记
-      for (let i = 0; i < path.length - 1; i++) {
-        const start = path[i];
-        const end = path[i + 1];
-        const mid = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2];
-        const angle = Math.atan2(end[1] - start[1], end[0] - start[0]) * 180 / Math.PI;
-
-        const arrowMarker = new window.AMap.Marker({
-          position: mid,
-          anchor: 'center',
-          angle,
-          rotation: angle + 90,
-          content: `
-            <div style="
-              width: 0;
-              height: 0;
-              border-left: 6px solid transparent;
-              border-right: 6px solid transparent;
-              border-bottom: 10px solid #5C3D2E;
-            "></div>
-          `,
-        });
-        polylinesRef.current.push(arrowMarker);
-        map.add(arrowMarker);
-      }
-    }
-
-    // 自动缩放
-    if (markersRef.current.length > 0) {
-      map.setFitView(markersRef.current);
-    }
-  };
-
-  // 保存更新函数到 ref，让外部可以调用
-  updateMarkersRef.current = updateMarkers;
-
-  // 初始化地图
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
+    // 地图首次渲染后强制重新计算尺寸，解决 display:none 导致的尺寸计算错误
+    setTimeout(() => map.invalidateSize(), 100);
 
-    // 确保 AMap ���加载
-    if (!window.AMap) {
-      console.warn('AMap 未加载');
-      return;
+    if (validMigrations.length > 0) {
+      const bounds = validMigrations.map(m => [m.latitude, m.longitude]);
+      map.fitBounds(bounds, { padding: [40, 40] });
     }
-
-    // 用轮询等待容器有实际尺寸
-    const tryInit = () => {
-      const container = mapContainerRef.current;
-      if (!container) return;
-
-      const { width, height } = container.getBoundingClientRect();
-
-      if (width === 0 || height === 0) {
-        setTimeout(tryInit, 100);
-        return;
-      }
-
-      // 容器有尺寸了，初始化地图
-      const map = new window.AMap.Map(container, {
-        zoom: 4,
-        center: [105, 36],
-        mapStyle: 'amap://styles/normal',
-      });
-
-      mapInstanceRef.current = map;
-
-      if (onResize) {
-        onResize(() => mapInstanceRef.current?.resize());
-      }
-
-      // 等地图底图加载完成后再 resize + 更新 markers
-      map.on('complete', () => {
-        mapInstanceRef.current?.resize()
-        setTimeout(() => {
-          if (updateMarkersRef.current) updateMarkersRef.current()
-        }, 50)
-      })
-    };
-
-    tryInit();
-
-    return () => {
-      mapInstanceRef.current?.destroy();
-      mapInstanceRef.current = null;
-    };
-  }, []);
-
-  // migrations 变化时更新 markers
-  useEffect(() => {
-    updateMarkers();
   }, [migrations]);
 
-  return (
-    <div
-      ref={mapContainerRef}
-      className="w-full h-full"
-      style={{ minHeight: '500px' }}
-    />
-  );
+  return null;
 };
 
-// ========== 信息卡片 ==========
-const MarkerInfoCard = ({ migration, onClose, onEdit }) => {
-  if (!migration) return null;
+// ========== 地图组件 ==========
+const MapView = ({ migrations, onMarkerClick }) => {
+  const validMigrations = migrations.filter(m => m.latitude && m.longitude);
+  const sorted = [...validMigrations].sort((a, b) => (a.year || 0) - (b.year || 0));
+
+  const center = validMigrations.length > 0
+    ? [validMigrations[0].latitude, validMigrations[0].longitude]
+    : [36, 105];
 
   return (
-    <div className="absolute top-4 right-4 bg-white rounded-lg shadow-xl border border-[#E5DED3] p-4 z-10 w-64">
-      <div className="flex justify-between items-start mb-2">
-        <h3 className="font-bold text-[#5C3D2E]">{migration.place_name}</h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg">×</button>
-      </div>
-      <div className="text-sm text-[#8B7355] mb-2">
-        {migration.year ? `年份：${migration.year}` : '年份未知'}
-      </div>
-      {migration.description && (
-        <p className="text-sm text-gray-600 mb-3">{migration.description}</p>
+    <MapContainer
+      center={center}
+      zoom={4}
+      style={{ width: '100%', height: '100%', minHeight: '500px' }}
+    >
+      <TileLayer
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution='© OpenStreetMap'
+      />
+      <FitBounds migrations={sorted} />
+      {sorted.map((m) => (
+        <Marker
+          key={m.id}
+          position={[m.latitude, m.longitude]}
+          icon={createIcon(m.year)}
+          eventHandlers={{ click: () => onMarkerClick(m) }}
+        >
+          <Popup>
+            <div>
+              <strong>{m.place_name}</strong>
+              {m.year && <div>{m.year}年</div>}
+              {m.description && <div>{m.description}</div>}
+            </div>
+          </Popup>
+        </Marker>
+      ))}
+      {sorted.length >= 2 && (
+        <Polyline
+          positions={sorted.map(m => [m.latitude, m.longitude])}
+          color="#5C3D2E"
+          weight={3}
+          opacity={0.8}
+        />
       )}
-      <button
-        onClick={() => onEdit(migration)}
-        className="text-sm text-[#C9A84C] hover:text-[#A08040]"
-      >
-        编辑
-      </button>
-    </div>
-  );
-};
-
-// ========== 手动添加表单 ==========
-const AddMigrationModal = ({ onClose, onSave, initialData, personId }) => {
-  const [form, setForm] = useState({
-    place_name: initialData?.place_name || '',
-    latitude: initialData?.latitude || '',
-    longitude: initialData?.longitude || '',
-    year: initialData?.year || '',
-    description: initialData?.description || '',
-  });
-  const [searchResults, setSearchResults] = useState([]);
-  const [loadingCoords, setLoadingCoords] = useState(false);
-
-  // 搜索地点
-  const searchPlace = async (keyword) => {
-    if (!keyword || keyword.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-
-    try {
-      const response = await fetch(
-        `https://restapi.amap.com/v3/place/text?key=075e5825f867290cfbe0fd1113a27694&keywords=${encodeURIComponent(keyword)}&types=190100|190200|190300|190400&city=china&output=json`
-      );
-      const data = await response.json();
-
-      if (data.status === '1' && data.pois) {
-        setSearchResults(data.pois.slice(0, 5));
-      }
-    } catch (e) {
-      console.error('搜索失败:', e);
-    }
-  };
-
-  const handlePlaceChange = (value) => {
-    setForm({ ...form, place_name: value });
-    searchPlace(value);
-  };
-
-  const selectPlace = (pois) => {
-    const location = pois.location.split(',');
-    setForm({
-      ...form,
-      place_name: pois.name + (pois.cityname ? ` (${pois.cityname})` : ''),
-      longitude: parseFloat(location[0]),
-      latitude: parseFloat(location[1]),
-    });
-    setSearchResults([]);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.place_name.trim()) return;
-
-    const data = {
-      place_name: form.place_name,
-      latitude: form.latitude ? parseFloat(form.latitude) : null,
-      longitude: form.longitude ? parseFloat(form.longitude) : null,
-      year: form.year ? parseInt(form.year) : null,
-      description: form.description || null,
-    };
-
-    await onSave(data);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
-        <h2 className="text-xl font-serif text-[#5C3D2E] mb-4">
-          {initialData ? '编辑迁徙地点' : '添加迁徙地点'}
-        </h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-[#6B5344] mb-1">
-              地点名称 <span className="text-red-500">*</span>
-            </label>
-            <input
-              required
-              className="w-full border-[#D4C4B0] border rounded-md p-2 focus:ring-[#C9A84C] focus:border-[#C9A84C] outline-none"
-              value={form.place_name}
-              onChange={(e) => handlePlaceChange(e.target.value)}
-              placeholder="输入地名自动补全坐标"
-            />
-            {searchResults.length > 0 && (
-              <div className="bg-white border border-[#D4C4B0] rounded-md mt-1 max-h-40 overflow-y-auto">
-                {searchResults.map((pois, idx) => (
-                  <div
-                    key={idx}
-                    className="p-2 hover:bg-[#FAF7F2] cursor-pointer"
-                    onClick={() => selectPlace(pois)}
-                  >
-                    <div className="text-sm text-[#4A3728]">{pois.name}</div>
-                    <div className="text-xs text-gray-500">{pois.address || pois.cityname}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-[#6B5344] mb-1">
-                纬度
-              </label>
-              <input
-                type="number"
-                step="any"
-                className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
-                value={form.latitude}
-                onChange={(e) => setForm({ ...form, latitude: e.target.value })}
-                placeholder="自动填充"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[#6B5344] mb-1">
-                经度
-              </label>
-              <input
-                type="number"
-                step="any"
-                className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
-                value={form.longitude}
-                onChange={(e) => setForm({ ...form, longitude: e.target.value })}
-                placeholder="自动填充"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#6B5344] mb-1">
-              年份
-            </label>
-            <input
-              type="number"
-              className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
-              value={form.year}
-              onChange={(e) => setForm({ ...form, year: e.target.value })}
-              placeholder="如：1990"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#6B5344] mb-1">
-              备注
-            </label>
-            <textarea
-              className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
-              rows="2"
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="这个地方发生了什么..."
-            />
-          </div>
-
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-[#8B7355] hover:text-[#5C3D2E]"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              className="px-6 py-2 bg-[#5C3D2E] text-white rounded-md hover:bg-[#3D281E]"
-            >
-              保存
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-// ========== AI 建议确认面板 ==========
-const SuggestModal = ({ suggestions, onClose, onConfirm }) => {
-  const [selected, setSelected] = useState(
-    suggestions.map(() => true)
-  );
-
-  const toggle = (index) => {
-    const newSelected = [...selected];
-    newSelected[index] = !newSelected[index];
-    setSelected(newSelected);
-  };
-
-  const handleConfirm = async () => {
-    const selectedItems = suggestions
-      .filter((_, idx) => selected[idx])
-      .map(s => ({
-        place_name: s.place_name,
-        year: s.year,
-        description: s.description,
-      }));
-    await onConfirm(selectedItems);
-  };
-
-  if (!suggestions || suggestions.length === 0) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl p-8 w-full max-w-md shadow-2xl text-center">
-          <div className="text-4xl mb-4">🤔</div>
-          <h2 className="text-xl font-serif text-[#5C3D2E] mb-2">未找到迁徙建议</h2>
-          <p className="text-gray-500 mb-4">
-            该人物的故事中没有提取到明确的迁徙地点。
-          </p>
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-[#5C3D2E] text-white rounded-md"
-          >
-            关闭
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <h2 className="text-xl font-serif text-[#5C3D2E] mb-2">
-          AI 智能提取结果
-        </h2>
-        <p className="text-sm text-gray-500 mb-4">
-          请勾选确认要保存的迁徙节点
-        </p>
-
-        <div className="flex-1 overflow-y-auto space-y-3 mb-4">
-          {suggestions.map((s, idx) => (
-            <div
-              key={idx}
-              className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                selected[idx]
-                  ? 'bg-[#FBF7EE] border-[#C9A84C]'
-                  : 'bg-gray-50 border-gray-200'
-              }`}
-              onClick={() => toggle(idx)}
-            >
-              <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={selected[idx]}
-                  onChange={() => {}}
-                  className="mt-1 w-4 h-4 text-[#C9A84C] rounded border-[#D4C4B0]"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-[#4A3728]">
-                      {s.place_name}
-                    </span>
-                    <span className="text-xs px-2 py-0.5 bg-[#C9A84C] bg-opacity-20 text-[#8B7355] rounded">
-                      {s.confidence}
-                    </span>
-                  </div>
-                  <div className="text-sm text-gray-500 mt-1">
-                    {s.year ? `年份：${s.year}` : '年份未知'}
-                  </div>
-                  {s.description && (
-                    <div className="text-sm text-gray-600 mt-1">
-                      {s.description}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-[#8B7355] hover:text-[#5C3D2E]"
-          >
-            取消
-          </button>
-          <button
-            onClick={handleConfirm}
-            className="px-6 py-2 bg-[#C9A84C] text-white rounded-md hover:bg-[#A08040]"
-          >
-            确认保存
-          </button>
-        </div>
-      </div>
-    </div>
+    </MapContainer>
   );
 };
 
 // ========== 主组件 ==========
-const MigrationMapTab = React.forwardRef(({ personId }, ref) => {
+const MigrationMapTab = ({ personId }) => {
   const [migrations, setMigrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -511,17 +98,6 @@ const MigrationMapTab = React.forwardRef(({ personId }, ref) => {
   const [suggestions, setSuggestions] = useState([]);
   const [selectedMarker, setSelectedMarker] = useState(null);
   const [editingMigration, setEditingMigration] = useState(null);
-  const mapContainerRef = useRef(null);
-  const mapResizeRef = useRef(null)
-
-  // 对外暴露 notifyActive 方法
-  React.useImperativeHandle(ref, () => ({
-    notifyActive: () => {
-      setTimeout(() => {
-        if (mapResizeRef.current) mapResizeRef.current()
-      }, 50)
-    }
-  }))
 
   // 加载迁徙记录
   useEffect(() => {
@@ -546,7 +122,6 @@ const MigrationMapTab = React.forwardRef(({ personId }, ref) => {
       } else {
         await createMigration(personId, data);
       }
-      // 刷新
       const res = await getPersonMigrations(personId);
       setMigrations(res.data || []);
       setShowAddModal(false);
@@ -608,7 +183,6 @@ const MigrationMapTab = React.forwardRef(({ personId }, ref) => {
     });
   }, [migrations]);
 
-  // 空状态
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -645,9 +219,7 @@ const MigrationMapTab = React.forwardRef(({ personId }, ref) => {
           {sortedMigrations.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-gray-500 mb-2">暂无迁徙记录</p>
-              <p className="text-sm text-gray-400">
-                点击上方按钮添加地点
-              </p>
+              <p className="text-sm text-gray-400">点击上方按钮添加地点</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -665,7 +237,7 @@ const MigrationMapTab = React.forwardRef(({ personId }, ref) => {
                         onClick={() => handleEdit(m)}
                         className="text-xs text-[#C9A84C] hover:text-[#A08040]"
                       >
-                        编辑
+                        ���辑
                       </button>
                       <button
                         onClick={() => handleDelete(m.id)}
@@ -675,9 +247,7 @@ const MigrationMapTab = React.forwardRef(({ personId }, ref) => {
                       </button>
                     </div>
                   </div>
-                  <div className="text-sm text-[#8B7355] mb-1">
-                    {m.place_name}
-                  </div>
+                  <div className="text-sm text-[#8B7355] mb-1">{m.place_name}</div>
                   {m.description && (
                     <div className="text-xs text-gray-500 line-clamp-2">
                       {m.description.slice(0, 20)}
@@ -692,32 +262,18 @@ const MigrationMapTab = React.forwardRef(({ personId }, ref) => {
       </div>
 
       {/* 右侧 - 地图区域 */}
-      <div className="w-[65%] relative">
+      <div className="w-[65%] h-[600px]">
         {sortedMigrations.length === 0 ? (
           <div className="w-full h-full flex items-center justify-center bg-[#F5F0E8]">
             <div className="text-center">
               <div className="text-4xl mb-2">🗺️</div>
-              <p className="text-gray-500">
-                添加第一个地点，开始记录迁徙轨迹
-              </p>
+              <p className="text-gray-500">添加第一个地点，开始记录迁徙轨迹</p>
             </div>
           </div>
         ) : (
           <MapView
             migrations={sortedMigrations}
             onMarkerClick={setSelectedMarker}
-            mapContainerRef={mapContainerRef}
-            onResize={(fn) => { mapResizeRef.current = fn }}
-          />
-        )}
-        {selectedMarker && (
-          <MarkerInfoCard
-            migration={selectedMarker}
-            onClose={() => setSelectedMarker(null)}
-            onEdit={(m) => {
-              setSelectedMarker(null);
-              handleEdit(m);
-            }}
           />
         )}
       </div>
@@ -731,7 +287,6 @@ const MigrationMapTab = React.forwardRef(({ personId }, ref) => {
           }}
           onSave={handleSave}
           initialData={editingMigration}
-          personId={personId}
         />
       )}
 
@@ -745,6 +300,242 @@ const MigrationMapTab = React.forwardRef(({ personId }, ref) => {
       )}
     </div>
   );
-});
+};
+
+// ========== 手动添加表单 ==========
+const AddMigrationModal = ({ onClose, onSave, initialData }) => {
+  const [form, setForm] = useState({
+    place_name: initialData?.place_name || '',
+    latitude: initialData?.latitude || '',
+    longitude: initialData?.longitude || '',
+    year: initialData?.year || '',
+    description: initialData?.description || '',
+  });
+  const [searchResults, setSearchResults] = useState([]);
+
+  // Nominatim 搜索
+  const searchPlace = async (keyword) => {
+    if (!keyword || keyword.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(keyword)}&format=json&limit=5&accept-language=zh`
+      );
+      const data = await response.json();
+      setSearchResults(data);
+    } catch (e) {
+      console.error('搜索失败:', e);
+    }
+  };
+
+  const handlePlaceChange = (value) => {
+    setForm({ ...form, place_name: value });
+    if (value.length >= 2) {
+      searchPlace(value);
+    } else {
+      setSearchResults([]);
+    }
+  };
+
+  const selectPlace = (pois) => {
+    setForm({
+      ...form,
+      place_name: pois.display_name,
+      latitude: parseFloat(pois.lat),
+      longitude: parseFloat(pois.lon),
+    });
+    setSearchResults([]);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.place_name.trim()) return;
+    const data = {
+      place_name: form.place_name,
+      latitude: form.latitude ? parseFloat(form.latitude) : null,
+      longitude: form.longitude ? parseFloat(form.longitude) : null,
+      year: form.year ? parseInt(form.year) : null,
+      description: form.description || null,
+    };
+    await onSave(data);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+        <h2 className="text-xl font-serif text-[#5C3D2E] mb-4">
+          {initialData ? '编辑迁徙地点' : '添加迁徙地点'}
+        </h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-[#6B5344] mb-1">
+              地点名称 <span className="text-red-500">*</span>
+            </label>
+            <input
+              required
+              className="w-full border-[#D4C4B0] border rounded-md p-2 focus:ring-[#C9A84C] focus:border-[#C9A84C] outline-none"
+              value={form.place_name}
+              onChange={(e) => handlePlaceChange(e.target.value)}
+              placeholder="输入地名自动补全坐标"
+            />
+            {searchResults.length > 0 && (
+              <div className="bg-white border border-[#D4C4B0] rounded-md mt-1 max-h-40 overflow-y-auto">
+                {searchResults.map((pois, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2 hover:bg-[#FAF7F2] cursor-pointer"
+                    onClick={() => selectPlace(pois)}
+                  >
+                    <div className="text-sm text-[#4A3728]">{pois.display_name}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-[#6B5344] mb-1">纬度</label>
+              <input
+                type="number"
+                step="any"
+                className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+                value={form.latitude}
+                onChange={(e) => setForm({ ...form, latitude: e.target.value })}
+                placeholder="自动填充"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#6B5344] mb-1">经度</label>
+              <input
+                type="number"
+                step="any"
+                className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+                value={form.longitude}
+                onChange={(e) => setForm({ ...form, longitude: e.target.value })}
+                placeholder="自动填充"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#6B5344] mb-1">年份</label>
+            <input
+              type="number"
+              className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+              value={form.year}
+              onChange={(e) => setForm({ ...form, year: e.target.value })}
+              placeholder="如：1990"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#6B5344] mb-1">备注</label>
+            <textarea
+              className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+              rows="2"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="这个地方发生了什么..."
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-[#8B7355]">
+              取消
+            </button>
+            <button type="submit" className="px-6 py-2 bg-[#5C3D2E] text-white rounded-md">
+              保存
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ========== AI 建议确认面板 ==========
+const SuggestModal = ({ suggestions, onClose, onConfirm }) => {
+  const [selected, setSelected] = useState(suggestions.map(() => true));
+
+  const toggle = (index) => {
+    const newSelected = [...selected];
+    newSelected[index] = !newSelected[index];
+    setSelected(newSelected);
+  };
+
+  const handleConfirm = async () => {
+    const selectedItems = suggestions
+      .filter((_, idx) => selected[idx])
+      .map(s => ({
+        place_name: s.place_name,
+        year: s.year,
+        description: s.description,
+      }));
+    await onConfirm(selectedItems);
+  };
+
+  if (!suggestions || suggestions.length === 0) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl p-8 w-full max-w-md shadow-2xl text-center">
+          <div className="text-4xl mb-4">🤔</div>
+          <h2 className="text-xl font-serif text-[#5C3D2E] mb-2">未找到迁徙建议</h2>
+          <p className="text-gray-500 mb-4">该人物的故事中没有提取到明确的迁徙地点。</p>
+          <button onClick={onClose} className="px-6 py-2 bg-[#5C3D2E] text-white rounded-md">
+            关闭
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <h2 className="text-xl font-serif text-[#5C3D2E] mb-2">AI 智能提取结果</h2>
+        <p className="text-sm text-gray-500 mb-4">请勾选确认要保存的迁徙节点</p>
+
+        <div className="flex-1 overflow-y-auto space-y-3 mb-4">
+          {suggestions.map((s, idx) => (
+            <div
+              key={idx}
+              className={`p-3 rounded-lg border cursor-pointer ${
+                selected[idx] ? 'bg-[#FBF7EE] border-[#C9A84C]' : 'bg-gray-50 border-gray-200'
+              }`}
+              onClick={() => toggle(idx)}
+            >
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={selected[idx]}
+                  onChange={() => {}}
+                  className="mt-1 w-4 h-4"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-[#4A3728]">{s.place_name}</span>
+                    <span className="text-xs px-2 py-0.5 bg-[#C9A84C] text-white rounded">{s.confidence}</span>
+                  </div>
+                  <div className="text-sm text-gray-500 mt-1">{s.year ? `年份：${s.year}` : '年份未知'}</div>
+                  {s.description && <div className="text-sm text-gray-600 mt-1">{s.description}</div>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-[#8B7355]">取消</button>
+          <button onClick={handleConfirm} className="px-6 py-2 bg-[#C9A84C] text-white rounded-md">
+            确认保存
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default MigrationMapTab;

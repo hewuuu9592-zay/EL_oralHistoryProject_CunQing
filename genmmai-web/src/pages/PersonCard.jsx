@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   getPerson, getPersonStories, getPersonStoryThemes, getPersonRelations,
@@ -495,7 +495,6 @@ const PersonCard = () => {
   const [activeTab, setActiveTab] = useState('timeline');
   const [selectedRelated, setSelectedRelated] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const migrationTabRef = useRef(null)
   const [allRelationships, setAllRelationships] = useState([]); // 全量关系
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -720,14 +719,7 @@ const PersonCard = () => {
           ].map((tab) => (
             <button
               key={tab.key}
-              onClick={() => {
-                setActiveTab(tab.key)
-                if (tab.key === 'migrations') {
-                  setTimeout(() => {
-                    migrationTabRef.current?.notifyActive()
-                  }, 100)
-                }
-              }}
+              onClick={() => setActiveTab(tab.key)}
               className={`flex-1 py-3 text-sm relative ${
                 activeTab === tab.key
                   ? 'text-[#4A3728] font-medium'
@@ -761,7 +753,7 @@ const PersonCard = () => {
             <ThemeStories themes={themes} stories={stories} />
           </div>
           <div style={{ display: activeTab === 'migrations' ? 'block' : 'none' }}>
-            <MigrationMapTab ref={migrationTabRef} personId={id} />
+            <MigrationMapTab personId={id} />
           </div>
         </div>
       </div>
