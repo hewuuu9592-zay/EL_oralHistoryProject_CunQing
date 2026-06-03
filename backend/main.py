@@ -204,18 +204,30 @@ def update_person(person_id: str, person: PersonCreate, db: Session = Depends(ge
     return db_person
 
 @app.delete("/persons/{person_id}")
-def delete_person(person_id: str, db: Session = Depends(get_db)):
+def delete_person(person_id: str, force: bool = False, db: Session = Depends(get_db)):
     """删除人物及其相关关系"""
     db_person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if db_person is None:
         raise HTTPException(status_code=404, detail="人物不存在")
-    
+
+    # 检查 story_persons 表中是否有该人物的关联记录
+    sp_records = db.query(models.StoryPerson).filter(models.StoryPerson.person_id == person_id).all()
+    if sp_records:
+        if not force:
+            story_ids = [sp.story_id for sp in sp_records]
+            raise HTTPException(
+                status_code=409,
+                detail=f"该人物关联了 {len(sp_records)} 个故事（story_id: {story_ids}），请使用 force=true 参数强制删除"
+            )
+        # force=True 时，先删除 story_persons 中的关联记录
+        db.query(models.StoryPerson).filter(models.StoryPerson.person_id == person_id).delete()
+
     # 删除关联的关系
     db.query(models.Relationship).filter(
-        (models.Relationship.person_a_id == person_id) | 
+        (models.Relationship.person_a_id == person_id) |
         (models.Relationship.person_b_id == person_id)
     ).delete()
-    
+
     db.delete(db_person)
     db.commit()
     return {"message": "人物已删除"}

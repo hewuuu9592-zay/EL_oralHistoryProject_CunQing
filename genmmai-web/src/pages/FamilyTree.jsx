@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deleteRelationship } from '../api'
+import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deletePersonForce, deleteRelationship } from '../api'
 
 // 渲染单个人物卡片 
 const PersonCard = ({ person, onEdit, onDelete, navigate }) => { 
@@ -205,7 +205,16 @@ const FamilyTree = () => {
       await deletePerson(id)
       fetchData()
     } catch (err) {
-      alert("删除失败")
+      if (err.response?.status === 409) {
+        // 有关联的故事，询问用户是否强制删除
+        const msg = err.response?.data?.detail || "该人物关联了故事，是否强制删除？（关联的故事记录也会被删除）"
+        if (window.confirm(msg)) {
+          await deletePersonForce(id)
+          fetchData()
+        }
+      } else {
+        alert("删除失败")
+      }
     }
   }
 
