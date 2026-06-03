@@ -504,7 +504,8 @@ const PersonCard = () => {
     bio: '',
     father_id: '',
     mother_id: '',
-    spouse_id: ''
+    spouse_id: '',
+    isDeceased: false   // 新增
   });
 
   useEffect(() => {
@@ -555,6 +556,9 @@ const PersonCard = () => {
       }
     });
   
+    // 计算是否已逝世
+    const isDeceased = !!(person.death_year && person.death_year !== '');
+  
     setEditForm({
       name: person.name || '',
       birth_year: person.birth_year ? String(person.birth_year) : '',
@@ -564,6 +568,7 @@ const PersonCard = () => {
       father_id: fatherId,
       mother_id: motherId,
       spouse_id: spouseId,
+      isDeceased: isDeceased,   // 新增
     });
     setShowEditModal(true);
   };
@@ -576,7 +581,7 @@ const PersonCard = () => {
         name: editForm.name,
         gender: editForm.gender,
         birth_year: editForm.birth_year ? parseInt(editForm.birth_year) : null,
-        death_year: editForm.death_year ? parseInt(editForm.death_year) : null,
+        death_year: editForm.isDeceased && editForm.death_year ? parseInt(editForm.death_year) : null,
         bio: editForm.bio,
       });
   
@@ -806,26 +811,50 @@ const PersonCard = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#6B5344] mb-1">逝世年份</label>
-                  <input 
+                  <label className="block text-sm font-medium text-[#6B5344] mb-1">性别</label>
+                  <select 
                     className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
-                    value={editForm.death_year}
-                    onChange={e => setEditForm({...editForm, death_year: e.target.value})}
-                    placeholder="如：2020"
-                  />
+                    value={editForm.gender}
+                    onChange={e => setEditForm({...editForm, gender: e.target.value})}
+                  >
+                    <option>男</option>
+                    <option>女</option>
+                  </select>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-[#6B5344] mb-1">性别</label>
-                <select 
-                  className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
-                  value={editForm.gender}
-                  onChange={e => setEditForm({...editForm, gender: e.target.value})}
-                >
-                  <option>男</option>
-                  <option>女</option>
-                </select>
+
+              {/* 已逝世复选框 + 逝世年份（条件显示） */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.isDeceased}
+                    onChange={e => {
+                      const checked = e.target.checked;
+                      setEditForm({
+                        ...editForm,
+                        isDeceased: checked,
+                        death_year: checked ? editForm.death_year : ''   // 取消勾选时清空年份
+                      });
+                    }}
+                    className="w-4 h-4 text-[#5C3D2E] rounded border-[#D4C4B0] focus:ring-[#C9A84C]"
+                  />
+                  <span className="text-sm text-[#6B5344]">已逝世</span>
+                </label>
+
+                {editForm.isDeceased && (
+                  <div>
+                    <label className="block text-sm font-medium text-[#6B5344] mb-1">逝世年份</label>
+                    <input 
+                      className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+                      value={editForm.death_year}
+                      onChange={e => setEditForm({...editForm, death_year: e.target.value})}
+                      placeholder="如：2020"
+                    />
+                  </div>
+                )}
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-[#6B5344] mb-1">简介</label>
                 <textarea 

@@ -146,7 +146,8 @@ const FamilyTree = () => {
     bio: '',
     father_id: '',
     mother_id: '',
-    spouse_id: ''
+    spouse_id: '',
+    isDeceased: false
   })
 
   const personsMap = useMemo(() => Object.fromEntries(persons.map(p => [p.id, p])), [persons])
@@ -178,7 +179,10 @@ const FamilyTree = () => {
     const mother = relationships.find(r => r.person_b_id === p.id && r.relation_type === 'mother')?.person_a_id || ''
     const spouseRel = relationships.find(r => (r.person_a_id === p.id || r.person_b_id === p.id) && r.relation_type === 'spouse')
     const spouse = spouseRel ? (spouseRel.person_a_id === p.id ? spouseRel.person_b_id : spouseRel.person_a_id) : ''
-
+  
+    // 根据 death_year 是否有值来决定 isDeceased
+    const isDeceased = !!(p.death_year && p.death_year !== '')
+  
     setNewPerson({
       name: p.name,
       birth_year: p.birth_year || '',
@@ -187,7 +191,8 @@ const FamilyTree = () => {
       bio: p.bio || '',
       father_id: father,
       mother_id: mother,
-      spouse_id: spouse
+      spouse_id: spouse,
+      isDeceased: isDeceased   // 新增
     })
     setShowAddModal(true)
   }
@@ -195,7 +200,11 @@ const FamilyTree = () => {
   const handleAddPerson = (e) => {
     e?.stopPropagation()
     setEditingPerson(null)
-    setNewPerson({ name: '', birth_year: '', death_year: '', gender: '男', bio: '', father_id: '', mother_id: '', spouse_id: '' })
+    setNewPerson({ 
+      name: '', birth_year: '', death_year: '', gender: '男', bio: '', 
+      father_id: '', mother_id: '', spouse_id: '',
+      isDeceased: false   // 新增
+    })
     setShowAddModal(true)
   }
 
@@ -225,7 +234,7 @@ const FamilyTree = () => {
         name: newPerson.name,
         gender: newPerson.gender,
         birth_year: newPerson.birth_year ? parseInt(newPerson.birth_year) : null,
-        death_year: newPerson.death_year ? parseInt(newPerson.death_year) : null,
+        death_year: newPerson.isDeceased && newPerson.death_year ? parseInt(newPerson.death_year) : null,
         bio: newPerson.bio
       }
       
@@ -382,6 +391,37 @@ const FamilyTree = () => {
                     <option>女</option>
                   </select>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newPerson.isDeceased}
+                    onChange={e => {
+                      const checked = e.target.checked;
+                      setNewPerson({
+                        ...newPerson,
+                        isDeceased: checked,
+                        // 如果取消勾选，清空逝世年份
+                        death_year: checked ? newPerson.death_year : ''
+                      });
+                    }}
+                    className="w-4 h-4 text-[#5C3D2E] rounded border-[#D4C4B0] focus:ring-[#C9A84C]"
+                  />
+                  <span className="text-sm text-[#6B5344]">已逝世</span>
+                </label>
+
+                {newPerson.isDeceased && (
+                  <div>
+                    <label className="block text-sm font-medium text-[#6B5344] mb-1">逝世年份</label>
+                    <input 
+                      className="w-full border-[#D4C4B0] border rounded-md p-2 outline-none"
+                      value={newPerson.death_year}
+                      onChange={e => setNewPerson({...newPerson, death_year: e.target.value})}
+                      placeholder="如：2020"
+                    />
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#6B5344] mb-1">简介</label>
