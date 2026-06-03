@@ -1,23 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getFamilyTimeline, getPersons } from '../api';
-
-const THEMES = ['家乡记忆', '工作岁月', '爱情婚姻', '历史亲历', '家族传承', '童年往事', '其他'];
-
-const THEME_COLORS = {
-  '家乡记忆': { bg: '#DCFCE7', text: '#166534', emoji: '🏠' },
-  '工作岁月': { bg: '#DBEAFE', text: '#1E40AF', emoji: '💼' },
-  '爱情婚姻': { bg: '#FCE7F9', text: '#9D174D', emoji: '💕' },
-  '历史亲历': { bg: '#FEF9C3', text: '#854D0E', emoji: '📜' },
-  '家族传承': { bg: '#166534', text: '#FFFFFF', emoji: '🌳' },
-  '童年往事': { bg: '#FFEDD5', text: '#9A3412', emoji: '🧒' },
-  '其他': { bg: '#F3F4F6', text: '#374151', emoji: '📝' },
-};
-
-const getThemeStyle = (theme) => THEME_COLORS[theme] || THEME_COLORS['其他'];
+import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
 // 筛选栏组件
-const FilterBar = ({ themes, selectedThemes, setSelectedThemes, persons, selectedPersons, setSelectedPersons, yearRange, setYearRange }) => {
+const FilterBar = ({ persons, selectedPersons, setSelectedPersons, yearRange, setYearRange }) => {
+  const { themes, getThemeStyle } = useTheme();
+  const [selectedThemes, setSelectedThemes] = useState([]);
+
+  // 初始化选中所有主题
+  useEffect(() => {
+    if (themes && themes.length > 0 && selectedThemes.length === 0) {
+      setSelectedThemes(themes.map(t => t.name));
+    }
+  }, [themes]);
+
   const toggleTheme = (theme) => {
     if (selectedThemes.includes(theme)) {
       setSelectedThemes(selectedThemes.filter(t => t !== theme));
@@ -34,6 +31,8 @@ const FilterBar = ({ themes, selectedThemes, setSelectedThemes, persons, selecte
     }
   };
 
+  if (!themes || themes.length === 0) return null;
+
   return (
     <div className="p-4 bg-white border-b border-[#E5DED3] space-y-3">
       {/* 主题多选 */}
@@ -41,26 +40,26 @@ const FilterBar = ({ themes, selectedThemes, setSelectedThemes, persons, selecte
         <div className="flex items-center gap-2 mb-2">
           <span className="text-sm text-[#8B7355]">主题：</span>
           <button
-            onClick={() => selectedThemes.length === THEMES.length ? setSelectedThemes([]) : setSelectedThemes([...THEMES])}
+            onClick={() => selectedThemes.length === themes.length ? setSelectedThemes([]) : setSelectedThemes(themes.map(t => t.name))}
             className="text-xs text-[#C9A84C] underline"
           >
-            {selectedThemes.length === THEMES.length ? '取消全选' : '全选'}
+            {selectedThemes.length === themes.length ? '取消全选' : '全选'}
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
-          {THEMES.map(theme => {
-            const style = getThemeStyle(theme);
-            const isSelected = selectedThemes.includes(theme);
+          {themes.map(theme => {
+            const style = getThemeStyle(themes, theme.name);
+            const isSelected = selectedThemes.includes(theme.name);
             return (
               <button
-                key={theme}
-                onClick={() => toggleTheme(theme)}
+                key={theme.name}
+                onClick={() => toggleTheme(theme.name)}
                 className={`px-3 py-1 rounded-full text-sm transition-colors ${
                   isSelected ? 'ring-2 ring-[#C9A84C]' : ''
                 }`}
                 style={{ backgroundColor: style.bg, color: style.text }}
               >
-                {style.emoji} {theme}
+                {style.emoji} {theme.name}
               </button>
             );
           })}
@@ -114,8 +113,9 @@ const FilterBar = ({ themes, selectedThemes, setSelectedThemes, persons, selecte
 
 // 故事卡片组件
 const StoryCard = ({ story, onClick }) => {
-  const themeStyle = getThemeStyle(story.theme);
+  const { themes, getThemeStyle } = useTheme();
   const navigate = useNavigate();
+  const themeStyle = getThemeStyle(themes, story.theme);
 
   return (
     <div
@@ -196,7 +196,6 @@ const FamilyTimeline = () => {
   const [persons, setPersons] = useState([]);
 
   // 筛选状态
-  const [selectedThemes, setSelectedThemes] = useState([...THEMES]);
   const [selectedPersons, setSelectedPersons] = useState([]);
   const [yearRange, setYearRange] = useState([null, null]);
 
@@ -218,38 +217,6 @@ const FamilyTimeline = () => {
     };
     fetchData();
   }, []);
-
-  // 构建筛选参数
-  const filters = useMemo(() => {
-    const params = {};
-
-    if (selectedThemes.length > 0 && selectedThemes.length < THEMES.length) {
-      params.theme = selectedThemes[0]; // 后端目前只支持单主题，简单处理
-    }
-
-    if (selectedPersons.length > 0) {
-      params.person_id = selectedPersons[0]; // 后端目前只支持单人物，简单处理
-    }
-
-    if (yearRange[0] !== null) params.year_from = yearRange[0];
-    if (yearRange[1] !== null) params.year_to = yearRange[1];
-
-    return params;
-  }, [selectedThemes, selectedPersons, yearRange]);
-
-  // 重新加载筛选后的数据
-  useEffect(() => {
-    if (loading) return;
-    const fetchFiltered = async () => {
-      try {
-        const res = await getFamilyTimeline(filters);
-        setStories(res.data || []);
-      } catch (e) {
-        console.error('筛选失败:', e);
-      }
-    };
-    fetchFiltered();
-  }, [filters]);
 
   // 按年份分组
   const groupedStories = useMemo(() => {
@@ -284,9 +251,6 @@ const FamilyTimeline = () => {
     <div>
       {/* 筛选栏 */}
       <FilterBar
-        themes={THEMES}
-        selectedThemes={selectedThemes}
-        setSelectedThemes={setSelectedThemes}
         persons={persons}
         selectedPersons={selectedPersons}
         setSelectedPersons={setSelectedPersons}
@@ -304,12 +268,9 @@ const FamilyTimeline = () => {
           </div>
         ) : (
           <>
-            {/* 有年份的故事 */}
             {groupedStories.years.map(year => (
               <YearGroup key={year} year={year} stories={groupedStories.grouped[year]} />
             ))}
-
-            {/* 无年份的故事 */}
             {groupedStories.noYear.length > 0 && (
               <YearGroup year={null} stories={groupedStories.noYear} />
             )}

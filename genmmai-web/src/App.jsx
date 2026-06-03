@@ -3,18 +3,21 @@ import FamilyTree from './pages/FamilyTree'
 import PersonCard from './pages/PersonCard'
 import StoryDetail from './pages/StoryDetail'
 import RecordStory from './pages/RecordStory'
+import { ThemeProvider } from './contexts/ThemeContext'
 import './App.css'
 
 function App() {
   return (
-    <div className="min-h-screen bg-[#F5F1E9]">
-      <Routes>
-        <Route path="/" element={<FamilyTree />} />
-        <Route path="/person/:id" element={<PersonCard />} />
-        <Route path="/story/:id" element={<StoryDetail />} />
-        <Route path="/record" element={<RecordStory />} />
-      </Routes>
-    </div>
+    <ThemeProvider>
+      <div className="min-h-screen bg-[#F5F1E9]">
+        <Routes>
+          <Route path="/" element={<FamilyTree />} />
+          <Route path="/person/:id" element={<PersonCard />} />
+          <Route path="/story/:id" element={<StoryDetail />} />
+          <Route path="/record" element={<RecordStory />} />
+        </Routes>
+      </div>
+    </ThemeProvider>
   )
 }
 
