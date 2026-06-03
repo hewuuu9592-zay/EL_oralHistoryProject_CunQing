@@ -8,7 +8,10 @@ import {
 } from '../api';
 
 // ========== 地图组件 ==========
-const MapView = ({ migrations, onMarkerClick, mapContainerRef }) => {
+// MapView 组件加 onResize prop
+const MapView = ({ migrations, onMarkerClick, mapContainerRef, onResize }) => {
+  // 初始化 useEffect 里，地图创建完后加这行：
+  if (onResize) onResize(() => mapInstanceRef.current?.resize())
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
   const polylinesRef = useRef([]);
@@ -463,7 +466,7 @@ const SuggestModal = ({ suggestions, onClose, onConfirm }) => {
 };
 
 // ========== 主组件 ==========
-const MigrationMapTab = ({ personId }) => {
+const MigrationMapTab = React.forwardRef(({ personId }, ref) => {
   const [migrations, setMigrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -472,6 +475,16 @@ const MigrationMapTab = ({ personId }) => {
   const [selectedMarker, setSelectedMarker] = useState(null);
   const [editingMigration, setEditingMigration] = useState(null);
   const mapContainerRef = useRef(null);
+  const mapResizeRef = useRef(null)
+
+  // 对外暴露 notifyActive 方法
+  React.useImperativeHandle(ref, () => ({
+    notifyActive: () => {
+      setTimeout(() => {
+        if (mapResizeRef.current) mapResizeRef.current()
+      }, 50)
+    }
+  }))
 
   // 加载迁徙记录
   useEffect(() => {
@@ -657,6 +670,7 @@ const MigrationMapTab = ({ personId }) => {
             migrations={sortedMigrations}
             onMarkerClick={setSelectedMarker}
             mapContainerRef={mapContainerRef}
+            onResize={(fn) => { mapResizeRef.current = fn }}
           />
         )}
         {selectedMarker && (
@@ -694,6 +708,6 @@ const MigrationMapTab = ({ personId }) => {
       )}
     </div>
   );
-};
+});
 
 export default MigrationMapTab;

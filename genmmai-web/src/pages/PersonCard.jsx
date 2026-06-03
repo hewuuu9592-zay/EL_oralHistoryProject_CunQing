@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   getPerson, getPersonStories, getPersonStoryThemes, getPersonRelations,
@@ -495,6 +495,7 @@ const PersonCard = () => {
   const [activeTab, setActiveTab] = useState('timeline');
   const [selectedRelated, setSelectedRelated] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const migrationTabRef = useRef(null)
   const [allRelationships, setAllRelationships] = useState([]); // 全量关系
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -719,7 +720,14 @@ const PersonCard = () => {
           ].map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key)
+                if (tab.key === 'migrations') {
+                  setTimeout(() => {
+                    migrationTabRef.current?.notifyActive()
+                  }, 100)
+                }
+              }}
               className={`flex-1 py-3 text-sm relative ${
                 activeTab === tab.key
                   ? 'text-[#4A3728] font-medium'
@@ -738,23 +746,23 @@ const PersonCard = () => {
       {/* 内容区域 */}
       <div className="p-4 pb-20">
         <div className="max-w-md mx-auto">
-          {activeTab === 'relations' && (
+          <div style={{ display: activeTab === 'relations' ? 'block' : 'none' }}>
             <RelationsGraph
               currentPerson={person}
               relations={relations}
               stories={stories}
               onEdgeClick={handleEdgeClick}
             />
-          )}
-          {activeTab === 'timeline' && (
+          </div>
+          <div style={{ display: activeTab === 'timeline' ? 'block' : 'none' }}>
             <Timeline stories={stories} person={person} />
-          )}
-          {activeTab === 'stories' && (
+          </div>
+          <div style={{ display: activeTab === 'stories' ? 'block' : 'none' }}>
             <ThemeStories themes={themes} stories={stories} />
-          )}
-          {activeTab === 'migrations' && (
-            <MigrationMapTab personId={id} />
-          )}
+          </div>
+          <div style={{ display: activeTab === 'migrations' ? 'block' : 'none' }}>
+            <MigrationMapTab ref={migrationTabRef} personId={id} />
+          </div>
         </div>
       </div>
 
