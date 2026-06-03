@@ -237,7 +237,7 @@ const MigrationMapTab = ({ personId }) => {
                         onClick={() => handleEdit(m)}
                         className="text-xs text-[#C9A84C] hover:text-[#A08040]"
                       >
-                        ���辑
+                        编辑
                       </button>
                       <button
                         onClick={() => handleDelete(m.id)}
