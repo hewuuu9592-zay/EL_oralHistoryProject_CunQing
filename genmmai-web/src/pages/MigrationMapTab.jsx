@@ -89,6 +89,37 @@ const MapView = ({ migrations, onMarkerClick }) => {
   );
 };
 
+// ========== 确认弹窗组件 ==========
+const ConfirmModal = ({
+  message,
+  confirmText = '确定',
+  cancelText = '取消',
+  onConfirm,
+  onCancel,
+}) => {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl">
+        <p className="text-[#4A3728] text-lg mb-6 whitespace-pre-wrap">{message}</p>
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2 border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50"
+          >
+            {cancelText}
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 py-2 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738]"
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ========== 主组件 ==========
 const MigrationMapTab = ({ personId }) => {
   const [migrations, setMigrations] = useState([]);
@@ -99,6 +130,9 @@ const MigrationMapTab = ({ personId }) => {
   const [extracting, setExtracting] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState(null);
   const [editingMigration, setEditingMigration] = useState(null);
+
+  // 确认弹窗状态
+  const [confirmConfig, setConfirmConfig] = useState(null);  // { message, confirmText, cancelText, onConfirm, onCancel }
 
   // 加载迁徙记录
   useEffect(() => {
@@ -117,20 +151,30 @@ const MigrationMapTab = ({ personId }) => {
 
   // 保存迁徙记录
   const handleSave = async (data) => {
+    // 编辑模式且有 source_story_id 时，询问是否同步
+    if (editingMigration && editingMigration.source_story_id) {
+      setConfirmConfig({
+        message: '这条记录来自一个共同故事，是否同步更新到该故事的所有关联人物？\n',
+        confirmText: '同步更新',
+        cancelText: '只更新我',
+        onConfirm: async () => {
+          setConfirmConfig(null);
+          await doSaveMigration(data, true);
+        },
+        onCancel: async () => {
+          setConfirmConfig(null);
+          await doSaveMigration(data, false);
+        },
+      });
+      return;
+    }
+
+    await doSaveMigration(data, false);
+  };
+
+  // 执行保存（内部函数）
+  const doSaveMigration = async (data, syncToStory) => {
     try {
-      let syncToStory = false;
-
-      console.log('editing migration:', editingMigration)
-      // 编辑模式且有 source_story_id 时，询问是否同步
-      if (editingMigration && editingMigration.source_story_id) {
-        const shouldSync = confirm(
-          '这条记录来自一个共同故事，是否同步更新到该故事的所有关联人物？\n\n确定 = 同步所有人\n取消 = 只更新当前人物'
-        );
-        if (shouldSync) {
-          syncToStory = true;
-        }
-      }
-
       const saveData = syncToStory ? { ...data, sync_to_story: true } : data;
 
       if (editingMigration) {
@@ -144,7 +188,13 @@ const MigrationMapTab = ({ personId }) => {
       setEditingMigration(null);
     } catch (e) {
       console.error('保存失败:', e);
-      alert('保存失败');
+      setConfirmConfig({
+        message: '保存失败，请重试',
+        confirmText: '知道了',
+        cancelText: '',
+        onConfirm: () => setConfirmConfig(null),
+        onCancel: () => {},
+      });
     }
   };
 
@@ -154,20 +204,39 @@ const MigrationMapTab = ({ personId }) => {
     const migration = migrations.find(m => m.id === mid);
     if (!migration) return;
 
-    let syncToStory = false;
-
     // 有 source_story_id 时，询问是否同步删除
     if (migration.source_story_id) {
-      const shouldSync = confirm(
-        '是否同时删除该故事其他关联人物的相同迁徙记录？\n\n确定 = 删除所有人\n取消 = 只删除当前人物'
-      );
-      if (shouldSync) {
-        syncToStory = true;
-      }
-    } else if (!confirm('确定删除这条迁徙记录？')) {
+      setConfirmConfig({
+        message: '是否同时删除该故事其他关联人物的相同迁徙记录？\n\n确定 = 删除所有人\n取消 = 只删除当前人物',
+        confirmText: '同步删除',
+        cancelText: '只删除我',
+        onConfirm: async () => {
+          setConfirmConfig(null);
+          await doDeleteMigration(mid, true);
+        },
+        onCancel: async () => {
+          setConfirmConfig(null);
+          await doDeleteMigration(mid, false);
+        },
+      });
       return;
     }
 
+    // 无 source_story_id 时，简单确认删除
+    setConfirmConfig({
+      message: '确定删除这条迁徙记录？',
+      confirmText: '删除',
+      cancelText: '取消',
+      onConfirm: async () => {
+        setConfirmConfig(null);
+        await doDeleteMigration(mid, false);
+      },
+      onCancel: () => setConfirmConfig(null),
+    });
+  };
+
+  // 执行删除（内部函数）
+  const doDeleteMigration = async (mid, syncToStory) => {
     try {
       await deleteMigration(personId, mid, syncToStory);
       const res = await getPersonMigrations(personId);
@@ -179,8 +248,20 @@ const MigrationMapTab = ({ personId }) => {
 
   // 一键提取迁徙记录
   const handleBatchExtract = async () => {
-    if (!confirm('将分析该人物所有未提取过的故事，提取其中的地点信息。是否继续？')) return;
+    setConfirmConfig({
+      message: '将分析该人物所有未提取过的故事，提取其中的地点信息。是否继续？',
+      confirmText: '开始提取',
+      cancelText: '取消',
+      onConfirm: async () => {
+        setConfirmConfig(null);
+        await doBatchExtract();
+      },
+      onCancel: () => setConfirmConfig(null),
+    });
+  };
 
+  // 执行批量提取（内部函数）
+  const doBatchExtract = async () => {
     setExtracting(true);
     try {
       const res = await batchExtractMigrations(personId);
@@ -190,10 +271,23 @@ const MigrationMapTab = ({ personId }) => {
       const migrationsRes = await getPersonMigrations(personId);
       setMigrations(migrationsRes.data || []);
 
-      alert(`本次新增 ${result.written_count || 0} 条迁徙记录，涉及 ${result.stories_count || 0} 个故事`);
+      // 显示结果
+      setConfirmConfig({
+        message: `本次新增 ${result.written_count || 0} 条迁徙记录，涉及 ${result.stories_count || 0} 个故事`,
+        confirmText: '知道了',
+        cancelText: '',
+        onConfirm: () => setConfirmConfig(null),
+        onCancel: () => {},
+      });
     } catch (e) {
       console.error('提取失败:', e);
-      alert('提取失败，请重试');
+      setConfirmConfig({
+        message: '提取失败，请重试',
+        confirmText: '知道了',
+        cancelText: '',
+        onConfirm: () => setConfirmConfig(null),
+        onCancel: () => {},
+      });
     } finally {
       setExtracting(false);
     }
@@ -347,6 +441,17 @@ const MigrationMapTab = ({ personId }) => {
           suggestions={suggestions}
           onClose={() => setShowSuggestModal(false)}
           onConfirm={handleConfirmSuggestions}
+        />
+      )}
+
+      {/* 确认弹窗 */}
+      {confirmConfig && (
+        <ConfirmModal
+          message={confirmConfig.message}
+          confirmText={confirmConfig.confirmText}
+          cancelText={confirmConfig.cancelText}
+          onConfirm={confirmConfig.onConfirm}
+          onCancel={confirmConfig.onCancel}
         />
       )}
     </div>
