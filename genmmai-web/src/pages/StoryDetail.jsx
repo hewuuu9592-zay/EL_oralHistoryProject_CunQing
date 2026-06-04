@@ -208,17 +208,18 @@ const StoryDetail = () => {
 
       <div className="max-w-[680px] mx-auto w-full px-4 py-6">
         {/* 顶部区域 */}
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => navigate(-1)}
-            className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm hover:shadow"
-          >
-            <svg className="w-5 h-5 text-[#4A3728]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate(-1)}
+              className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm hover:shadow"
+            >
+              <svg className="w-5 h-5 text-[#4A3728]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
 
-          {story.year && (
+            {story.year && (
             <span className="text-3xl font-serif text-[#D4A574]">
               {story.year} 年
             </span>
@@ -233,6 +234,17 @@ const StoryDetail = () => {
               <span>{themeInfo.emoji} {story.theme}</span>
             </span>
           )}
+
+          {/* 编辑按钮 */}
+          <button
+            onClick={openEditModal}
+            className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm hover:shadow"
+          >
+            <svg className="w-5 h-5 text-[#D4A574]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a3 3 0 114.243 4.243m-4.836 6.428l4.836 6.428m0 0a3 3 0 105.648-5.648l-3.536 3.536m0 0l3.536-3.536m-3.536 3.536L9.464 5.232" />
+            </svg>
+          </button>
+          </div>
         </div>
 
         {/* 音频播放器 */}
@@ -283,15 +295,7 @@ const StoryDetail = () => {
         )}
 
         {/* 故事正文 */}
-        <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm relative">
-          <button
-            onClick={openEditModal}
-            className="absolute top-4 right-4 text-gray-300 hover:text-[#D4A574]"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a3 3 0 114.243 4.243m-4.836 6.428l4.836 6.428m0 0a3 3 0 105.648-5.648l-3.536 3.536m0 0l3.536-3.536m-3.536 3.536L9.464 5.232" />
-            </svg>
-          </button>
+        <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm">
           <p className="font-serif text-[#4A3728] text-lg leading-[1.8] whitespace-pre-wrap">
             {story.transcript || '暂无文字内容'}
           </p>
