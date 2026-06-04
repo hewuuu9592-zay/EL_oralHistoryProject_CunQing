@@ -664,7 +664,6 @@ const PersonCard = () => {
     <div className="min-h-screen bg-[#FAF7F2] relative">
       {/* Header */}
       <div className="bg-white border-b border-[#E5DED3] pb-6 pt-4 px-4">
-        <div className="max-w-md mx-auto">
           <div className="flex justify-between items-start mb-4">
             <button
               onClick={() => navigate('/')}
@@ -705,12 +704,11 @@ const PersonCard = () => {
               {person?.bio || ''}
             </p>
           </div>
-        </div>
       </div>
 
       {/* Tab 导航 */}
       <div className="bg-white border-b border-[#E5DED3]">
-        <div className="max-w-md mx-auto flex">
+        <div className="flex px-4">
           {[
             { key: 'relations', label: '人际关系图' },
             { key: 'timeline', label: '个人时间轴' },
@@ -737,7 +735,6 @@ const PersonCard = () => {
 
       {/* 内容区域 */}
       <div className="p-4 pb-20">
-        <div className="max-w-md mx-auto">
           <div style={{ display: activeTab === 'relations' ? 'block' : 'none' }}>
             <RelationsGraph
               currentPerson={person}
@@ -755,7 +752,6 @@ const PersonCard = () => {
           <div style={{ display: activeTab === 'migrations' ? 'block' : 'none' }}>
             <MigrationMapTab personId={id} />
           </div>
-        </div>
       </div>
 
       {/* 关系侧边栏 */}
