@@ -67,4 +67,15 @@ export const updateTheme = (id, data) => api.patch(`/themes/${id}`, data);
 // 主题管理 - 获取带故事数量的主题列表
 export const getThemesWithCount = () => api.get('/themes/with-count');
 
+// 历史事件 API
+export const getHistoricalEvents = (yearFrom, yearTo) => {
+  const params = new URLSearchParams();
+  if (yearFrom) params.append('year_from', yearFrom);
+  if (yearTo) params.append('year_to', yearTo);
+  return api.get(`/historical-events?${params.toString()}`);
+};
+export const getEventMemories = (eventId) => api.get(`/historical-events/${eventId}/memories`);
+export const createEventMemory = (eventId, data) => api.post(`/historical-events/${eventId}/memories`, data);
+export const deleteEventMemory = (eventId, memoryId) => api.delete(`/historical-events/${eventId}/memories/${memoryId}`);
+
 export default api;
