@@ -40,7 +40,7 @@ const FitBounds = ({ migrations }) => {
     setTimeout(() => map.invalidateSize(), 100);
     if (validMigrations.length > 0) {
       const bounds = validMigrations.map(m => [m.latitude, m.longitude]);
-      map.fitBounds(bounds, { padding: [50, 50] });
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 5 });
     }
   }, [migrations]);
 
