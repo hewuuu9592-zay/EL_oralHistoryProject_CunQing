@@ -66,6 +66,14 @@ class EventMemory(Base):
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+
+class StoryHistoryRelation(Base):
+    __tablename__ = "story_history_relations"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    story_id = Column(String, ForeignKey("stories.id"), nullable=False)
+    event_id = Column(String, ForeignKey("historical_events.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
 class Relationship(Base):
     __tablename__ = "relationships"
     id = Column(String, primary_key=True, default=generate_uuid)

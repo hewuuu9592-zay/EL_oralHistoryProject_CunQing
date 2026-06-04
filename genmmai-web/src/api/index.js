@@ -74,6 +74,9 @@ export const getHistoricalEvents = (yearFrom, yearTo) => {
   if (yearTo) params.append('year_to', yearTo);
   return api.get(`/historical-events?${params.toString()}`);
 };
+
+export const getEventStories = (eventId) => api.get(`/historical-events/${eventId}/stories`);
+export const detectStoryHistory = (storyId) => api.post(`/stories/${storyId}/detect-history`);
 export const getEventMemories = (eventId) => api.get(`/historical-events/${eventId}/memories`);
 export const createEventMemory = (eventId, data) => api.post(`/historical-events/${eventId}/memories`, data);
 export const deleteEventMemory = (eventId, memoryId) => api.delete(`/historical-events/${eventId}/memories/${memoryId}`);

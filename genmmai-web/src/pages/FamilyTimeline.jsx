@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getFamilyTimeline, getPersons, getThemes, getHistoricalEvents, createEventMemory } from '../api';
+import { getFamilyTimeline, getPersons, getThemes, getHistoricalEvents, createEventMemory, getEventStories } from '../api';
 import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
 const CATEGORY_ICONS = {
@@ -212,12 +212,33 @@ const StoryCard = ({ story }) => {
 const HistoryEventCard = ({ event, onAddMemory }) => {
   const [showInput, setShowInput] = useState(false);
   const [content, setContent] = useState('');
+  const [showRelatedStories, setShowRelatedStories] = useState(false);
+  const [relatedStories, setRelatedStories] = useState([]);
+  const [loadingStories, setLoadingStories] = useState(false);
 
   const handleSubmit = () => {
     if (content.trim()) {
       onAddMemory(event.id, content);
       setContent('');
       setShowInput(false);
+    }
+  };
+
+  // 加载关联故事
+  const loadRelatedStories = async () => {
+    if (relatedStories.length > 0) {
+      setShowRelatedStories(!showRelatedStories);
+      return;
+    }
+    setLoadingStories(true);
+    try {
+      const res = await getEventStories(event.id);
+      setRelatedStories(res.data || []);
+      setShowRelatedStories(true);
+    } catch (e) {
+      console.error('加载关联故事失败:', e);
+    } finally {
+      setLoadingStories(false);
     }
   };
 
@@ -246,13 +267,56 @@ const HistoryEventCard = ({ event, onAddMemory }) => {
         <p className="text-xs text-gray-600 line-clamp-2 mb-2">{event.description}</p>
       )}
 
-      {/* 亲历记录入口 */}
+      {/* 关联故事入口 */}
       <button
-        onClick={() => setShowInput(!showInput)}
-        className="text-xs text-[#5C3D2E] hover:underline"
+        onClick={loadRelatedStories}
+        className="text-xs text-[#5C3D2E] hover:underline mr-2"
       >
-        + 记录亲历
+        本家族有相关记忆 📖
       </button>
+
+      {/* 按钮区 */}
+      <div className="flex gap-2 mt-1">
+        <button
+          onClick={() => setShowInput(!showInput)}
+          className="text-xs text-[#5C3D2E] hover:underline"
+        >
+          + 记录亲历
+        </button>
+      </div>
+
+      {/* 关联故事列表 */}
+      {showRelatedStories && (
+        <div className="mt-2 pt-2 border-t border-gray-200">
+          {loadingStories ? (
+            <div className="text-xs text-gray-400">加载中...</div>
+          ) : relatedStories.length > 0 ? (
+            <div className="space-y-2">
+              {relatedStories.map((story) => (
+                <div
+                  key={story.id}
+                  className="p-2 bg-white rounded border border-gray-200 text-xs cursor-pointer hover:border-[#C9A84C]"
+                  onClick={() => navigate(`/story/${story.id}`)}
+                >
+                  <div className="font-medium text-[#4A3728] line-clamp-1">
+                    {story.summary || story.transcript?.slice(0, 30) || '暂无'}...
+                  </div>
+                  {story.year && (
+                    <span className="text-gray-400">{story.year}年</span>
+                  )}
+                  {story.persons && story.persons.length > 0 && (
+                    <span className="text-gray-400 ml-2">
+                      👤 {story.persons.map(p => p.name).join('、')}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-gray-400">暂无关联故事</div>
+          )}
+        </div>
+      )}
 
       {/* 快速录入框 */}
       {showInput && (

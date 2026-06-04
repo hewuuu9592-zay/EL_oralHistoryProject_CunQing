@@ -1138,7 +1138,7 @@ def create_story(story: StoryCreate, db: Session = Depends(get_db)):
     return db_story
 
 @app.post("/stories/full")
-def create_story_full(story: StoryFullCreate, db: Session = Depends(get_db)):
+def create_story_full(story: StoryFullCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """创建完整故事（含人物关联）"""
     # 1. 创建故事记录
     db_story = models.Story(
@@ -1164,10 +1164,86 @@ def create_story_full(story: StoryFullCreate, db: Session = Depends(get_db)):
         db.add(db_sp)
 
     db.commit()
+
+    # 异步检测历史事件关联
+    background_tasks.add_task(detect_story_history_task, db_story.id)
+
     return db_story
 
+
+def detect_story_history_task(story_id: str):
+    """后台检测故事与历史事件的关联"""
+    db = SessionLocal()
+    try:
+        story = db.query(models.Story).filter(models.Story.id == story_id).first()
+        if not story or not story.transcript:
+            return
+
+        events = db.query(models.HistoricalEvent).all()
+        if not events:
+            return
+
+        events_list = "\n".join([f"- {e.id}: {e.title} ({e.year}年)" for e in events])
+        api_key = os.getenv("ARK_API_KEY", "")
+        if not api_key:
+            return
+
+        try:
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://ark.cn-beijing.volces.com/api/v3",
+            )
+
+            prompt = f"""以下是一段口述故事，请判断其中是否涉及到以下历史事件，返回相关事件的id列表（JSON数组格式）。如果没有关联的事件，返回空数组[]。
+
+历史事件列表：
+{events_list}
+
+故事内容：
+{story.transcript}
+
+请直接返回JSON数组，不要其他内容："""
+
+            response = client.chat.completions.create(
+                model="ep-20260521233914-gllp4",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+            )
+
+            result_text = response.choices[0].message.content.strip()
+            try:
+                if "```json" in result_text:
+                    result_text = result_text.split("```json")[1].split("```")[0]
+                elif "```" in result_text:
+                    result_text = result_text.split("```")[1].split("```")[0]
+                event_ids = json_lib.loads(result_text.strip())
+                if not isinstance(event_ids, list):
+                    event_ids = []
+            except:
+                event_ids = []
+
+            # 删除旧关联
+            db.query(models.StoryHistoryRelation).filter(
+                models.StoryHistoryRelation.story_id == story_id
+            ).delete()
+
+            # 插入新关联
+            for event_id in event_ids:
+                db_rel = models.StoryHistoryRelation(
+                    story_id=story_id,
+                    event_id=event_id
+                )
+                db.add(db_rel)
+
+            db.commit()
+        except Exception as e:
+            print(f"AI 检测失败: {str(e)}")
+    finally:
+        db.close()
+
+
 @app.put("/stories/{story_id}", response_model=Story)
-def update_story(story_id: str, story: StoryCreate, db: Session = Depends(get_db)):
+def update_story(story_id: str, story: StoryCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """更新故事信息"""
     db_story = db.query(models.Story).filter(models.Story.id == story_id).first()
     if db_story is None:
@@ -1179,10 +1255,14 @@ def update_story(story_id: str, story: StoryCreate, db: Session = Depends(get_db
 
     db.commit()
     db.refresh(db_story)
+
+    # 异步检测历史事件关联
+    background_tasks.add_task(detect_story_history_task, story_id)
+
     return db_story
 
 @app.patch("/stories/{story_id}", response_model=Story)
-def patch_story(story_id: str, story_update: StoryUpdate, db: Session = Depends(get_db)):
+def patch_story(story_id: str, story_update: StoryUpdate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """更新故事（支持 partial update）"""
     db_story = db.query(models.Story).filter(models.Story.id == story_id).first()
     if db_story is None:
@@ -1212,6 +1292,11 @@ def patch_story(story_id: str, story_update: StoryUpdate, db: Session = Depends(
 
     db.commit()
     db.refresh(db_story)
+
+    # 异步检测历史事件关联（如果有transcript变更）
+    if story_update.transcript:
+        background_tasks.add_task(detect_story_history_task, story_id)
+
     return db_story
 
 @app.get("/stories/{story_id}", response_model=StoryWithPersons)
@@ -1676,6 +1761,139 @@ def delete_event_memory(event_id: str, mid: str, db: Session = Depends(get_db)):
     db.delete(memory)
     db.commit()
     return {"message": "亲历记录已删除"}
+
+
+@app.post("/stories/{story_id}/detect-history")
+def detect_story_history(story_id: str, db: Session = Depends(get_db)):
+    """AI 检测故事与历史事件的关联"""
+    # 获取故事
+    story = db.query(models.Story).filter(models.Story.id == story_id).first()
+    if not story:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    if not story.transcript:
+        return {"event_ids": []}
+
+    # 获取所有历史事件
+    events = db.query(models.HistoricalEvent).all()
+    if not events:
+        return {"event_ids": []}
+
+    # 构建事件列表
+    events_list = "\n".join([f"- {e.id}: {e.title} ({e.year}年)" for e in events])
+
+    # 调用 AI 检测
+    api_key = os.getenv("ARK_API_KEY", "")
+    if not api_key:
+        return {"event_ids": []}
+
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://ark.cn-beijing.volces.com/api/v3",
+        )
+
+        prompt = f"""以下是一段口述故事，请判断其中是否涉及到以下历史事件，返回相关事件的id列表（JSON数组格式），比如["id1","id2"]。如果没有关联的事件，返回空数组[]。
+
+历史事件列表：
+{events_list}
+
+故事内容：
+{story.transcript}
+
+请直接返回JSON数组，不要其他内容："""
+
+        response = client.chat.completions.create(
+            model="ep-20260521233914-gllp4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+
+        result_text = response.choices[0].message.content.strip()
+
+        # 解析 JSON
+        try:
+            # 去掉可能的 ```json 和 ```
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1].split("```")[0]
+
+            event_ids = json_lib.loads(result_text.strip())
+            if not isinstance(event_ids, list):
+                event_ids = []
+        except:
+            event_ids = []
+
+        # 删除旧的关联
+        db.query(models.StoryHistoryRelation).filter(
+            models.StoryHistoryRelation.story_id == story_id
+        ).delete()
+
+        # 插入新的关联
+        for event_id in event_ids:
+            db_rel = models.StoryHistoryRelation(
+                story_id=story_id,
+                event_id=event_id
+            )
+            db.add(db_rel)
+
+        db.commit()
+        return {"event_ids": event_ids}
+
+    except Exception as e:
+        print(f"AI 检测失败: {str(e)}")
+        return {"event_ids": []}
+
+
+@app.get("/historical-events/{event_id}/stories")
+def get_event_stories(event_id: str, db: Session = Depends(get_db)):
+    """获取与该历史事件关联的家族故事"""
+    # 检查事件是否存在
+    event = db.query(models.HistoricalEvent).filter(models.HistoricalEvent.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="历史事件不存在")
+
+    # 获取关联的故事
+    relations = db.query(models.StoryHistoryRelation).filter(
+        models.StoryHistoryRelation.event_id == event_id
+    ).all()
+    story_ids = [r.story_id for r in relations]
+
+    if not story_ids:
+        return []
+
+    stories = db.query(models.Story).filter(
+        models.Story.id.in_(story_ids)
+    ).all()
+
+    # 为每个故事获取关联人物
+    result = []
+    for story in stories:
+        sp_records = db.query(models.StoryPerson).filter(
+            models.StoryPerson.story_id == story.id
+        ).all()
+        person_ids = [sp.person_id for sp in sp_records]
+        persons = []
+        if person_ids:
+            db_persons = db.query(models.Person).filter(
+                models.Person.id.in_(person_ids)
+            ).all()
+            persons = [
+                {"id": p.id, "name": p.name, "avatar_url": p.avatar_url}
+                for p in db_persons
+            ]
+
+        result.append({
+            "id": story.id,
+            "transcript": story.transcript,
+            "summary": story.summary,
+            "year": story.year,
+            "theme": story.theme,
+            "persons": persons
+        })
+
+    return result
 
 
 # ============= Themes API =============
