@@ -165,6 +165,7 @@ class StoryUpdate(BaseModel):
     transcript: Optional[str] = None
     year: Optional[int] = None
     theme: Optional[str] = None
+    person_ids: Optional[List[str]] = None
 
 # ============= Migration Records =============
 
@@ -820,6 +821,23 @@ def patch_story(story_id: str, story_update: StoryUpdate, db: Session = Depends(
         raise HTTPException(status_code=404, detail="故事不存在")
 
     update_data = story_update.model_dump(exclude_unset=True)
+
+    # 处理 person_ids 更新：先删除旧的 story_persons 记录，再插入新的
+    if "person_ids" in update_data and update_data["person_ids"] is not None:
+        new_person_ids = update_data.pop("person_ids")
+        # 删除该故事原有的所有 story_persons 记录
+        db.query(models.StoryPerson).filter(
+            models.StoryPerson.story_id == story_id
+        ).delete()
+        # 插入新的人物关联记录
+        for pid in new_person_ids:
+            db_sp = models.StoryPerson(
+                story_id=story_id,
+                person_id=pid,
+                is_protagonist=False
+            )
+            db.add(db_sp)
+
     for key, value in update_data.items():
         if value is not None:
             setattr(db_story, key, value)

@@ -1,26 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getStory, patchStory } from '../api';
-
-const THEMES = [
-  { name: '家乡记忆', emoji: '🏠' },
-  { name: '工作岁月', emoji: '💼' },
-  { name: '爱情婚姻', emoji: '💕' },
-  { name: '历史亲历', emoji: '📜' },
-  { name: '家族传承', emoji: '🌳' },
-  { name: '童年往事', emoji: '🧒' },
-  { name: '其他', emoji: '📝' },
-];
+import { getStory, patchStory, getPersons } from '../api';
+import { useTheme } from '../contexts/ThemeContext';
 
 const StoryDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { themes, getThemeStyle } = useTheme();
 
   const [story, setStory] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editTranscript, setEditTranscript] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  // 编辑表单状态
+  const [editTranscript, setEditTranscript] = useState('');
+  const [editYear, setEditYear] = useState(null);
+  const [editTheme, setEditTheme] = useState('');
+  const [editPersonIds, setEditPersonIds] = useState([]);
+  const [allPersons, setAllPersons] = useState([]);
+  const [personsLoading, setPersonsLoading] = useState(false);
 
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
@@ -28,12 +28,12 @@ const StoryDetail = () => {
   const [duration, setDuration] = useState(0);
   const audioRef = useRef(null);
 
+  // 获取故事数据
   useEffect(() => {
     const fetchStory = async () => {
       try {
         const res = await getStory(id);
         setStory(res.data);
-        setEditTranscript(res.data.transcript || '');
       } catch (err) {
         console.error('获取故事失败:', err);
       } finally {
@@ -42,6 +42,87 @@ const StoryDetail = () => {
     };
     fetchStory();
   }, [id]);
+
+  // 打开编辑 Modal
+  const openEditModal = async () => {
+    if (!story) return;
+
+    // 初始化表单数据
+    setEditTranscript(story.transcript || '');
+    setEditYear(story.year || null);
+    setEditTheme(story.theme || '');
+    setEditPersonIds(story.persons?.map(p => p.id) || []);
+
+    // 获取家族成员列表
+    setPersonsLoading(true);
+    try {
+      const res = await getPersons();
+      setAllPersons(res.data || []);
+    } catch (err) {
+      console.error('获取人物列表失败:', err);
+    } finally {
+      setPersonsLoading(false);
+    }
+
+    setIsModalOpen(true);
+    setError(null);
+  };
+
+  // 关闭 Modal
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setError(null);
+  };
+
+  // 切换人物选择
+  const togglePerson = (personId) => {
+    if (editPersonIds.includes(personId)) {
+      // 至少保留一个人物
+      if (editPersonIds.length > 1) {
+        setEditPersonIds(editPersonIds.filter(id => id !== personId));
+      }
+    } else {
+      setEditPersonIds([...editPersonIds, personId]);
+    }
+  };
+
+  // 保存编辑
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+
+    try {
+      // 构造更新数据
+      const updateData = {};
+
+      if (editTranscript !== story.transcript) {
+        updateData.transcript = editTranscript;
+      }
+      if (editYear !== story.year) {
+        updateData.year = editYear;
+      }
+      if (editTheme !== story.theme) {
+        updateData.theme = editTheme;
+      }
+      if (editPersonIds.length > 0) {
+        updateData.person_ids = editPersonIds;
+      }
+
+      // 调用 API 更新
+      await patchStory(id, updateData);
+
+      // 刷新故事数据
+      const res = await getStory(id);
+      setStory(res.data);
+
+      closeModal();
+    } catch (err) {
+      console.error('保存失败:', err);
+      setError(err.response?.data?.detail || '保存失败，请重试');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // 音频事件监听
   useEffect(() => {
@@ -92,21 +173,8 @@ const StoryDetail = () => {
   };
 
   const getThemeInfo = (themeName) => {
-    return THEMES.find(t => t.name === themeName) || { name: themeName, emoji: '📝' };
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await patchStory(id, { transcript: editTranscript });
-      setStory({ ...story, transcript: editTranscript });
-      setIsEditing(false);
-    } catch (err) {
-      console.error('保存失败:', err);
-      alert('保存失败，请重试');
-    } finally {
-      setSaving(false);
-    }
+    const theme = themes?.find(t => t.name === themeName);
+    return theme || { name: themeName, emoji: '📝', color_bg: '#F3F4F6', color_text: '#374151' };
   };
 
   if (loading) {
@@ -157,7 +225,10 @@ const StoryDetail = () => {
           )}
 
           {(story.theme || story.decade) && (
-            <span className="px-3 py-1 bg-white rounded-full text-sm shadow-sm">
+            <span
+              className="px-3 py-1 rounded-full text-sm shadow-sm"
+              style={{ backgroundColor: themeInfo.color_bg, color: themeInfo.color_text }}
+            >
               {story.decade && <span className="text-gray-400">{story.decade} </span>}
               <span>{themeInfo.emoji} {story.theme}</span>
             </span>
@@ -213,44 +284,17 @@ const StoryDetail = () => {
 
         {/* 故事正文 */}
         <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm relative">
-          {isEditing ? (
-            <div className="space-y-4">
-              <textarea
-                value={editTranscript}
-                onChange={(e) => setEditTranscript(e.target.value)}
-                className="w-full h-64 p-3 border border-[#E5DED3] rounded-lg resize-none focus:outline-none focus:border-[#D4A574] font-serif text-[#4A3728] text-lg leading-relaxed"
-              />
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => setIsEditing(false)}
-                  className="px-4 py-2 text-gray-500 hover:text-gray-700"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="px-4 py-2 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738] disabled:opacity-50"
-                >
-                  {saving ? '保存中...' : '保存'}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <button
-                onClick={() => setIsEditing(true)}
-                className="absolute top-4 right-4 text-gray-300 hover:text-[#D4A574]"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a3 3 0 114.243 4.243m-4.836 6.428l4.836 6.428m0 0a3 3 0 105.648-5.648l-3.536 3.536m0 0l3.536-3.536m-3.536 3.536L9.464 5.232" />
-                </svg>
-              </button>
-              <p className="font-serif text-[#4A3728] text-lg leading-[1.8] whitespace-pre-wrap">
-                {story.transcript || '暂无文字内容'}
-              </p>
-            </>
-          )}
+          <button
+            onClick={openEditModal}
+            className="absolute top-4 right-4 text-gray-300 hover:text-[#D4A574]"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a3 3 0 114.243 4.243m-4.836 6.428l4.836 6.428m0 0a3 3 0 105.648-5.648l-3.536 3.536m0 0l3.536-3.536m-3.536 3.536L9.464 5.232" />
+            </svg>
+          </button>
+          <p className="font-serif text-[#4A3728] text-lg leading-[1.8] whitespace-pre-wrap">
+            {story.transcript || '暂无文字内容'}
+          </p>
         </div>
 
         {/* 涉及人物 */}
@@ -289,6 +333,156 @@ const StoryDetail = () => {
           )}
         </div>
       </div>
+
+      {/* 编辑 Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Modal 头部 */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-xl font-serif text-[#4A3728]">编辑故事</h2>
+              <button
+                onClick={closeModal}
+                className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center"
+              >
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal 内容 */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* 故事内容 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-2">故事内容</label>
+                <textarea
+                  value={editTranscript}
+                  onChange={(e) => setEditTranscript(e.target.value)}
+                  className="w-full h-40 p-3 border border-[#E5DED3] rounded-lg resize-none focus:outline-none focus:border-[#D4A574] font-serif text-[#4A3728] text-base leading-relaxed"
+                  placeholder="请输入故事内容..."
+                />
+              </div>
+
+              {/* 年份标注 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-2">年份标注</label>
+                <input
+                  type="number"
+                  value={editYear || ''}
+                  onChange={(e) => setEditYear(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                  placeholder="故事发生在哪一年"
+                />
+              </div>
+
+              {/* 所属类目 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-2">所属类目</label>
+                {personsLoading ? (
+                  <div className="text-gray-400 text-sm">加载中...</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {themes?.map((theme) => {
+                      const isSelected = editTheme === theme.name;
+                      return (
+                        <button
+                          key={theme.id}
+                          onClick={() => setEditTheme(theme.name)}
+                          className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
+                            isSelected
+                              ? 'text-white'
+                              : 'text-gray-600 hover:bg-gray-100'
+                          }`}
+                          style={{
+                            backgroundColor: isSelected
+                              ? '#4A3728'
+                              : theme.color_bg || '#F3F4F6',
+                            color: isSelected
+                              ? '#fff'
+                              : theme.color_text || '#374151',
+                          }}
+                        >
+                          {theme.emoji} {theme.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 关联人物 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-2">
+                  关联人物
+                  <span className="text-xs text-gray-400 ml-1">(至少选择一个)</span>
+                </label>
+                {personsLoading ? (
+                  <div className="text-gray-400 text-sm">加载中...</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {allPersons.map((person) => {
+                      const isSelected = editPersonIds.includes(person.id);
+                      return (
+                        <button
+                          key={person.id}
+                          onClick={() => togglePerson(person.id)}
+                          className={`flex items-center gap-2 px-2 py-1.5 rounded-full text-sm transition-all ${
+                            isSelected
+                              ? 'bg-[#4A3728] text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {person.avatar_url ? (
+                            <img
+                              src={person.avatar_url}
+                              alt={person.name}
+                              className="w-6 h-6 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
+                                isSelected ? 'bg-white/20 text-white' : 'bg-[#D4A574] text-white'
+                              }`}
+                            >
+                              {person.name?.charAt(0) || '?'}
+                            </div>
+                          )}
+                          <span>{person.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 错误提示 */}
+              {error && (
+                <div className="text-red-500 text-sm text-center py-2 bg-red-50 rounded-lg">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            {/* Modal 底部按钮 */}
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
+              <button
+                onClick={closeModal}
+                className="px-5 py-2 text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-5 py-2 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738] disabled:opacity-50 transition-colors"
+              >
+                {saving ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
