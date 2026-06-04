@@ -382,7 +382,7 @@ const AddMigrationModal = ({ onClose, onSave, initialData }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
         <h2 className="text-xl font-serif text-[#5C3D2E] mb-4">
           {initialData ? '编辑迁徙地点' : '添加迁徙地点'}
@@ -498,7 +498,7 @@ const SuggestModal = ({ suggestions, onClose, onConfirm }) => {
 
   if (!suggestions || suggestions.length === 0) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
         <div className="bg-white rounded-xl p-8 w-full max-w-md shadow-2xl text-center">
           <div className="text-4xl mb-4">🤔</div>
           <h2 className="text-xl font-serif text-[#5C3D2E] mb-2">未找到迁徙建议</h2>
