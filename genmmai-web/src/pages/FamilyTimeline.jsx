@@ -1,9 +1,149 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getFamilyTimeline, getPersons, getThemes } from '../api';
-import { getThemeStyle } from '../contexts/ThemeContext';
+import { getFamilyTimeline, getPersons, getThemes, getHistoricalEvents, createEventMemory } from '../api';
+import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
 const CATEGORY_ICONS = {
+  '政治': '🏛️',
+  '经济': '💰',
+  '社会': '👥',
+  '文化': '🎭',
+  '战争': '⚔️',
+  '科技': '🔬',
+  '外交': '🌍',
+  '教育': '📚',
+  '体育': '🏅',
+  '军事': '🪖',
+  '国际': '🌐',
+};
+
+// 筛选栏组件
+const FilterBar = ({
+  persons,
+  selectedPersons,
+  setSelectedPersons,
+  yearRange,
+  setYearRange,
+  selectedThemes,
+  setSelectedThemes,
+  themes,
+  getThemeStyle,
+}) => {
+  const toggleTheme = (theme) => {
+    if (selectedThemes.includes(theme)) {
+      setSelectedThemes(selectedThemes.filter(t => t !== theme));
+    } else {
+      setSelectedThemes([...selectedThemes, theme]);
+    }
+  };
+
+  const togglePerson = (pid) => {
+    if (selectedPersons.includes(pid)) {
+      setSelectedPersons(selectedPersons.filter(p => p !== pid));
+    } else {
+      setSelectedPersons([...selectedPersons, pid]);
+    }
+  };
+
+  if (!themes || themes.length === 0) return null;
+
+  return (
+    <div className="p-4 bg-white border-b border-[#E5DED3] space-y-3">
+      {/* 主题多选 */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-sm text-[#8B7355]">主题：</span>
+          <button
+            onClick={() =>
+              selectedThemes.length === themes.length
+                ? setSelectedThemes([])
+                : setSelectedThemes(themes.map((t) => t.name))
+            }
+            className="text-xs text-[#C9A84C] underline"
+          >
+            {selectedThemes.length === themes.length ? '取消全选' : '全选'}
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {themes.map((theme) => {
+            const style = getThemeStyle(themes, theme.name);
+            const isSelected = selectedThemes.includes(theme.name);
+            return (
+              <button
+                key={theme.name}
+                onClick={() => toggleTheme(theme.name)}
+                className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                  isSelected ? 'ring-2 ring-[#C9A84C]' : ''
+                }`}
+                style={{ backgroundColor: style.bg, color: style.text }}
+              >
+                {style.emoji} {theme.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 年代范围 */}
+      <div className="flex items-center gap-4">
+        <span className="text-sm text-[#8B7355]">年代：</span>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            className="w-20 border border-[#D4C4B0] rounded px-2 py-1 text-sm"
+            placeholder="1900"
+            value={yearRange[0] || ''}
+            onChange={(e) =>
+              setYearRange([
+                e.target.value ? parseInt(e.target.value) : null,
+                yearRange[1],
+              ])
+            }
+          />
+          <span className="text-gray-400">-</span>
+          <input
+            type="number"
+            className="w-20 border border-[#D4C4B0] rounded px-2 py-1 text-sm"
+            placeholder="2000"
+            value={yearRange[1] || ''}
+            onChange={(e) =>
+              setYearRange([
+                yearRange[0],
+                e.target.value ? parseInt(e.target.value) : null,
+              ])
+            }
+          />
+        </div>
+      </div>
+
+      {/* 人物多选 */}
+      <div>
+        <span className="text-sm text-[#8B7355] mr-2">人物：</span>
+        <select
+          multiple
+          className="border border-[#D4C4B0] rounded px-2 py-1 text-sm min-h-[80px]"
+          onChange={(e) => {
+            const options = Array.from(e.target.selectedOptions, (opt) => opt.value);
+            setSelectedPersons(options);
+          }}
+        >
+          {persons.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        {selectedPersons.length > 0 && (
+          <span className="ml-2 text-xs text-[#C9A84C]">
+            已选 {selectedPersons.length} 人
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const EVENT_CATEGORY_ICONS = {
   '政治': '🏛️',
   '经济': '💰',
   '社会': '👥',
@@ -81,7 +221,7 @@ const HistoryEventCard = ({ event, onAddMemory }) => {
     }
   };
 
-  const icon = CATEGORY_ICONS[event.category] || '📌';
+  const icon = EVENT_CATEGORY_ICONS[event.category] || '📌';
   const isLarge = event.importance === 3;
 
   return (
@@ -186,78 +326,52 @@ const TimelineAxis = ({ yearFrom, yearTo }) => {
   );
 };
 
-// 筛选栏组件
-const FilterBar = ({ yearFrom, yearTo, setYearFrom, setYearTo }) => {
-  return (
-    <div className="p-3 bg-white border-b border-[#E5DED3] flex items-center gap-4">
-      <span className="text-sm text-[#8B7355]">年代范围：</span>
-      <input
-        type="number"
-        className="w-20 border border-[#D4C4B0] rounded px-2 py-1 text-sm"
-        placeholder="1900"
-        value={yearFrom || ''}
-        onChange={(e) => setYearFrom(e.target.value ? parseInt(e.target.value) : null)}
-      />
-      <span className="text-gray-400">-</span>
-      <input
-        type="number"
-        className="w-20 border border-[#D4C4B0] rounded px-2 py-1 text-sm"
-        placeholder="2025"
-        value={yearTo || ''}
-        onChange={(e) => setYearTo(e.target.value ? parseInt(e.target.value) : null)}
-      />
-      <span className="text-sm text-gray-400 ml-auto">
-        共 {yearFrom || '?'} - {yearTo || '?'} 年
-      </span>
-    </div>
-  );
-};
-
 // 主组件
 const FamilyTimeline = () => {
   const navigate = useNavigate();
   const [stories, setStories] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [persons, setPersons] = useState([]);
+  const [themes, setThemes] = useState([]);
 
   // 筛选状态
-  const [yearFrom, setYearFrom] = useState(null);
-  const [yearTo, setYearTo] = useState(null);
+  const [yearRange, setYearRange] = useState([null, null]);
+  const [selectedPersons, setSelectedPersons] = useState([]);
+  const [selectedThemes, setSelectedThemes] = useState([]);
 
   // 加载数据
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [timelineRes] = await Promise.all([
+        const [timelineRes, personsRes, themesRes] = await Promise.all([
           getFamilyTimeline(),
+          getPersons(),
+          getThemes(),
         ]);
         const familyStories = timelineRes.data || [];
+        setStories(familyStories);
+        setPersons(personsRes.data || []);
+        setThemes(themesRes.data || []);
+        setSelectedThemes(themesRes.data?.map(t => t.name) || []);
 
         // 确定年份范围
         const storyYears = familyStories
           .map(s => s.year)
           .filter(y => y && y > 1800 && y < 2030);
 
-        let minYear = Math.min(...storyYears);
-        let maxYear = Math.max(...storyYears);
-
-        // 如果没有故事，设置默认范围
-        if (!minYear) minYear = 1950;
-        if (!maxYear) maxYear = 2025;
+        let minYear = storyYears.length > 0 ? Math.min(...storyYears) : 1950;
+        let maxYear = storyYears.length > 0 ? Math.max(...storyYears) : 2025;
 
         minYear = minYear - 10;
         maxYear = maxYear + 5;
 
-        setYearFrom(minYear);
-        setYearTo(maxYear);
-        setStories(familyStories);
+        setYearRange([minYear, maxYear]);
 
         // 加载历史事件
         try {
-          const eventsRes = await fetch(
-            `http://localhost:8000/historical-events?year_from=${minYear}&year_to=${maxYear}`
-          ).then(r => r.json());
-          setEvents(eventsRes || []);
+          const eventsRes = await getHistoricalEvents(minYear, maxYear);
+          setEvents(eventsRes.data || []);
         } catch (e) {
           console.error('加载历史事件失败:', e);
           setEvents([]);
@@ -271,13 +385,37 @@ const FamilyTimeline = () => {
     fetchData();
   }, []);
 
+  // 过滤家族故事
+  const filteredStories = useMemo(() => {
+    let filtered = stories;
+
+    if (yearRange[0]) {
+      filtered = filtered.filter(s => s.year >= yearRange[0]);
+    }
+    if (yearRange[1]) {
+      filtered = filtered.filter(s => !s.year || s.year <= yearRange[1]);
+    }
+    if (selectedThemes.length > 0) {
+      filtered = filtered.filter(s => s.theme && selectedThemes.includes(s.theme));
+    }
+    if (selectedPersons.length > 0) {
+      filtered = filtered.filter(s =>
+        s.persons?.some(p => selectedPersons.includes(p.id))
+      );
+    }
+
+    return filtered;
+  }, [stories, yearRange, selectedThemes, selectedPersons]);
+
   // 合并时间轴数据
   const timelineData = useMemo(() => {
     const items = [];
+    const yearFrom = yearRange[0] || 1950;
+    const yearTo = yearRange[1] || 2025;
 
     // 添加家族故事
-    stories.forEach(story => {
-      if (story.year && story.year >= yearFrom && story.year <= yearTo) {
+    filteredStories.forEach(story => {
+      if (story.year) {
         items.push({
           type: 'story',
           year: story.year,
@@ -288,7 +426,7 @@ const FamilyTimeline = () => {
 
     // 添加历史事件
     events.forEach(event => {
-      if (event.year && event.year >= yearFrom && event.year <= yearTo) {
+      if (event.year >= yearFrom && event.year <= yearTo) {
         items.push({
           type: 'event',
           year: event.year,
@@ -301,22 +439,22 @@ const FamilyTimeline = () => {
     items.sort((a, b) => a.year - b.year);
 
     return items;
-  }, [stories, events, yearFrom, yearTo]);
+  }, [filteredStories, events, yearRange]);
 
   // 添加亲历记录
   const handleAddMemory = async (eventId, content) => {
     try {
-      await fetch(`/historical-events/${eventId}/memories`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-      });
+      await createEventMemory(eventId, { content });
       alert('保存成功');
     } catch (e) {
       console.error('保存失败:', e);
       alert('保存失败');
     }
   };
+
+  // 计算年份范围变量
+  const yearFrom = yearRange[0] || 1950;
+  const yearTo = yearRange[1] || 2025;
 
   if (loading) {
     return (
@@ -330,10 +468,15 @@ const FamilyTimeline = () => {
     <div className="relative min-h-screen bg-[#FAF7F2]">
       {/* 筛选栏 */}
       <FilterBar
-        yearFrom={yearFrom}
-        yearTo={yearTo}
-        setYearFrom={setYearFrom}
-        setYearTo={setYearTo}
+        persons={persons}
+        selectedPersons={selectedPersons}
+        setSelectedPersons={setSelectedPersons}
+        yearRange={yearRange}
+        setYearRange={setYearRange}
+        selectedThemes={selectedThemes}
+        setSelectedThemes={setSelectedThemes}
+        themes={themes}
+        getThemeStyle={getThemeStyle}
       />
 
       {/* 时间轴内容 */}
