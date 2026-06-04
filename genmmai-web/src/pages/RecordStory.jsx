@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getPerson, getPersons, getSuggestQuestion, uploadAndProcessAudio, updateStory, getStory, createStoryPerson, tagStory } from '../api';
+import { getPerson, getPersons, getSuggestQuestion, uploadAndProcessAudio, updateStory, getStory, createStoryPerson, tagStory, extractStoryMigrations, confirmStoryMigrations } from '../api';
 import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
 const DEFAULT_QUESTION = "您有什么想留给后代的故事吗？";
@@ -37,6 +37,11 @@ const RecordStory = () => {
   const [storyId, setStoryId] = useState(null);
   const [transcriptionStatus, setTranscriptionStatus] = useState('pending'); // 'pending' | 'processing' | 'done' | 'failed'
   const [aiTagStatus, setAiTagStatus] = useState('untagged'); // 'untagged' | 'processing' | 'done' | 'failed'
+
+  // 迁徙提取状态
+  const [migrationsExtracted, setMigrationsExtracted] = useState([]);  // AI 提取的迁徙建议
+  const [selectedMigrations, setSelectedMigrations] = useState([]);    // 用户选中的迁徙
+  const [extractingMigrations, setExtractingMigrations] = useState(false);
 
   // 文件上传状态
   const [isUploading, setIsUploading] = useState(false);
@@ -301,7 +306,27 @@ const RecordStory = () => {
         });
       }
 
-      // 跳转回人物详情页
+      // 尝试提取迁徙记录
+      setExtractingMigrations(true);
+      try {
+        const res = await extractStoryMigrations(storyId);
+        const extracted = res.data || [];
+
+        if (extracted.length > 0) {
+          // 有提取结果，显示迁徙确认卡片
+          setMigrationsExtracted(extracted);
+          setSelectedMigrations(extracted.map(m => ({
+            ...m,
+            selected: true
+          })));
+          setExtractingMigrations(false);
+          return;  // 不跳转，等待用户确认
+        }
+      } catch (extractErr) {
+        console.error('提取迁徙记录失败:', extractErr);
+      }
+
+      // 没有提取到迁徙记录，直接跳转
       navigate(`/person/${personId}`);
     } catch (err) {
       console.error('保存故事失败:', err);
@@ -309,6 +334,42 @@ const RecordStory = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  // 处理迁徙确认
+  const handleConfirmMigrations = async () => {
+    try {
+      // 筛选选中的迁徙
+      const selected = selectedMigrations.filter(m => m.selected);
+      if (selected.length > 0) {
+        await confirmStoryMigrations(storyId, {
+          migrations: selected.map(m => ({
+            place_name: m.place_name,
+            latitude: m.latitude,
+            longitude: m.longitude,
+            year: m.year,
+            description: m.description,
+            person_ids: selectedPersons
+          }))
+        });
+      }
+      navigate(`/person/${personId}`);
+    } catch (err) {
+      console.error('保存迁徙记录失败:', err);
+      alert('保存迁徙记录失败，请重试');
+    }
+  };
+
+  // 跳过迁徙直接跳转
+  const handleSkipMigrations = () => {
+    navigate(`/person/${personId}`);
+  };
+
+  // 切换迁徙选择
+  const toggleMigrationSelection = (index) => {
+    setSelectedMigrations(prev => prev.map((m, i) =>
+      i === index ? { ...m, selected: !m.selected } : m
+    ));
   };
 
   const getNameInitial = (name) => {
@@ -463,18 +524,81 @@ const RecordStory = () => {
           </div>
         </div>
 
-        {/* 底部按钮 */}
-        <div className="bg-white border-t border-[#E5DED3] p-4">
-          <div className="max-w-md mx-auto">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full py-3 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738] disabled:opacity-50"
-            >
-              {saving ? '保存中...' : '保存故事'}
-            </button>
+        {/* 迁徙提取确认卡片 */}
+        {(migrationsExtracted.length > 0 || extractingMigrations) && (
+          <div className="mx-4 mb-4 bg-white rounded-xl border border-[#D4A574] p-4 shadow-sm">
+            {extractingMigrations ? (
+              <div className="flex items-center justify-center gap-3 py-4">
+                <div className="w-5 h-5 border-2 border-[#D4A574] border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-[#6B4F35]">正在分析故事中的地点信息...</span>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium text-[#4A3728] pb-2 border-b border-[#E5DED3]">
+                  是否为这个故事生成迁徙记录？
+                </h3>
+
+                {/* 提取的地名列表 */}
+                <div className="space-y-2">
+                  {selectedMigrations.map((m, index) => (
+                    <label
+                      key={index}
+                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={m.selected}
+                        onChange={() => toggleMigrationSelection(index)}
+                        className="w-4 h-4 text-[#4A3728] rounded focus:ring-[#D4A574]"
+                      />
+                      <div>
+                        <div className="font-medium text-[#4A3728]">{m.place_name}</div>
+                        {m.year && <span className="text-sm text-gray-500">{m.year}年</span>}
+                        {m.description && <span className="text-sm text-gray-400 ml-2">{m.description}</span>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                {/* 涉及人物说明 */}
+                <div className="text-sm text-gray-500 pt-2 border-t border-[#E5DED3]">
+                  以下成员都将同步此记录：{selectedPersons.map(pid => persons.find(p => p.id === pid)?.name).filter(Boolean).join('、')}
+                </div>
+
+                {/* 按钮 */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={handleSkipMigrations}
+                    className="flex-1 py-2 border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50"
+                  >
+                    跳过
+                  </button>
+                  <button
+                    onClick={handleConfirmMigrations}
+                    className="flex-1 py-2 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738]"
+                  >
+                    确认生成
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* 底部按钮 - 仅在不显示迁徙卡片时显示 */}
+        {!migrationsExtracted.length && !extractingMigrations && (
+          <div className="bg-white border-t border-[#E5DED3] p-4">
+            <div className="max-w-md mx-auto">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="w-full py-3 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738] disabled:opacity-50"
+              >
+                {saving ? '保存中...' : '保存故事'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

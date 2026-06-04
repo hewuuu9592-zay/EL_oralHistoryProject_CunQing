@@ -4,7 +4,7 @@ import {
   createMigration,
   updateMigration,
   deleteMigration,
-  suggestMigrations,
+  batchExtractMigrations,
 } from '../api';
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -96,6 +96,7 @@ const MigrationMapTab = ({ personId }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
+  const [extracting, setExtracting] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState(null);
   const [editingMigration, setEditingMigration] = useState(null);
 
@@ -144,19 +145,29 @@ const MigrationMapTab = ({ personId }) => {
     }
   };
 
-  // AI 智能提取
-  const handleAISuggest = async () => {
+  // 一键提取迁徙记录
+  const handleBatchExtract = async () => {
+    if (!confirm('将分析该人物所有未提取过的故事，提取其中的地点信息。是否继续？')) return;
+
+    setExtracting(true);
     try {
-      const res = await suggestMigrations(personId);
-      setSuggestions(res.data || []);
-      setShowSuggestModal(true);
+      const res = await batchExtractMigrations(personId);
+      const result = res.data || {};
+
+      // 刷新迁徙记录列表
+      const migrationsRes = await getPersonMigrations(personId);
+      setMigrations(migrationsRes.data || []);
+
+      alert(`本次新增 ${result.written_count || 0} 条迁徙记录，涉及 ${result.stories_count || 0} 个故事`);
     } catch (e) {
-      console.error('AI 提取失败:', e);
-      alert('AI 提取失败');
+      console.error('提取失败:', e);
+      alert('提取失败，请重试');
+    } finally {
+      setExtracting(false);
     }
   };
 
-  // 批量保存建议
+  // 批量保存建议 (保留用于兼容旧逻辑)
   const handleConfirmSuggestions = async (items) => {
     try {
       await Promise.all(items.map(item => createMigration(personId, item)));
@@ -207,10 +218,18 @@ const MigrationMapTab = ({ personId }) => {
             + 手动添加地点
           </button>
           <button
-            onClick={handleAISuggest}
-            className="flex-1 px-3 py-2 bg-[#C9A84C] text-white text-sm rounded-md hover:bg-[#A08040] transition-colors"
+            onClick={handleBatchExtract}
+            disabled={extracting}
+            className="flex-1 px-3 py-2 bg-[#C9A84C] text-white text-sm rounded-md hover:bg-[#A08040] transition-colors disabled:opacity-50"
           >
-            ✨ AI 智能提取
+            {extracting ? (
+              <>
+                <div className="w-3 h-3 inline-block mr-1 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                分析中...
+              </>
+            ) : (
+              <>✨ 从故事一键提取</>
+            )}
           </button>
         </div>
 
