@@ -46,6 +46,26 @@ class MigrationRecord(Base):
     source_story_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+
+class HistoricalEvent(Base):
+    __tablename__ = "historical_events"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    year = Column(Integer, nullable=False, index=True)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    category = Column(String, nullable=False)  # 政治/经济/社会/文化/战争
+    importance = Column(Integer, default=1)  # 1-3，决定卡片大小
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class EventMemory(Base):
+    __tablename__ = "event_memories"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    event_id = Column(String, ForeignKey("historical_events.id"), nullable=False)
+    person_id = Column(String, ForeignKey("persons.id"), nullable=True)  # 可空，表示通用回忆
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
 class Relationship(Base):
     __tablename__ = "relationships"
     id = Column(String, primary_key=True, default=generate_uuid)

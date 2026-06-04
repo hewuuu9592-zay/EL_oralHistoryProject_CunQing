@@ -231,6 +231,36 @@ class MigrationSuggestResponse(BaseModel):
     description: Optional[str] = None
     confidence: str  # "故事中明确提到" / "推测" / "可能"
 
+
+class HistoricalEventResponse(BaseModel):
+    """历史事件响应"""
+    id: str
+    year: int
+    title: str
+    description: Optional[str] = None
+    category: str
+    importance: int
+
+    class Config:
+        from_attributes = True
+
+
+class EventMemoryCreate(BaseModel):
+    """创建亲历记录"""
+    content: str
+    person_id: Optional[str] = None
+
+
+class EventMemoryResponse(BaseModel):
+    """亲历记录响应"""
+    id: str
+    event_id: str
+    person_id: Optional[str] = None
+    content: str
+
+    class Config:
+        from_attributes = True
+
 # ============= Geocoding Helper =============
 
 def geocode_place(place_name: str) -> Optional[dict]:
@@ -1572,6 +1602,80 @@ def read_family_migrations_persons(db: Session = Depends(get_db)):
     persons = db.query(models.Person).filter(models.Person.id.in_(person_ids)).all()
 
     return [{"id": p.id, "name": p.name, "avatar_url": p.avatar_url} for p in persons]
+
+
+# ============= Historical Events API =============
+
+@app.get("/historical-events", response_model=List[HistoricalEventResponse])
+def read_historical_events(
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """获取历史事件列表，支持按年份过滤"""
+    query = db.query(models.HistoricalEvent)
+
+    if year_from is not None:
+        query = query.filter(models.HistoricalEvent.year >= year_from)
+    if year_to is not None:
+        query = query.filter(models.HistoricalEvent.year <= year_to)
+
+    return query.order_by(models.HistoricalEvent.year.asc()).all()
+
+
+@app.post("/historical-events/{event_id}/memories", response_model=EventMemoryResponse)
+def create_event_memory(event_id: str, memory: EventMemoryCreate, db: Session = Depends(get_db)):
+    """新增亲历记录"""
+    # 检查事件是否存在
+    event = db.query(models.HistoricalEvent).filter(models.HistoricalEvent.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="历史事件不存在")
+
+    # 检查人物是否存在（非空时）
+    if memory.person_id:
+        person = db.query(models.Person).filter(models.Person.id == memory.person_id).first()
+        if not person:
+            raise HTTPException(status_code=404, detail="人物不存在")
+
+    db_memory = models.EventMemory(
+        event_id=event_id,
+        person_id=memory.person_id,
+        content=memory.content
+    )
+    db.add(db_memory)
+    db.commit()
+    db.refresh(db_memory)
+    return db_memory
+
+
+@app.get("/historical-events/{event_id}/memories", response_model=List[EventMemoryResponse])
+def read_event_memories(event_id: str, db: Session = Depends(get_db)):
+    """获取该事件的所有亲历记录"""
+    # 检查事件是否存在
+    event = db.query(models.HistoricalEvent).filter(models.HistoricalEvent.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="历史事件不存在")
+
+    memories = db.query(models.EventMemory).filter(
+        models.EventMemory.event_id == event_id
+    ).order_by(models.EventMemory.created_at.desc()).all()
+
+    return memories
+
+
+@app.delete("/historical-events/{event_id}/memories/{mid}")
+def delete_event_memory(event_id: str, mid: str, db: Session = Depends(get_db)):
+    """删除亲历记录"""
+    memory = db.query(models.EventMemory).filter(
+        models.EventMemory.id == mid,
+        models.EventMemory.event_id == event_id
+    ).first()
+    if not memory:
+        raise HTTPException(status_code=404, detail="亲历记录不存在")
+
+    db.delete(memory)
+    db.commit()
+    return {"message": "亲历记录已删除"}
 
 
 # ============= Themes API =============
