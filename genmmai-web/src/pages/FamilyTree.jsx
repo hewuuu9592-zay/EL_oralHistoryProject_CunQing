@@ -317,7 +317,7 @@ const FamilyTree = () => {
       </div>
 
       {/* 内容区域 - 仅在家族树 tab 显示 */}
-      <div className="pt-16 pb-20" style={{ display: activeTab === 'tree' ? 'block' : 'none' }}>
+      <div className="pt-0 pb-20" style={{ display: activeTab === 'tree' ? 'block' : 'none' }}>
       {loading ? (
         <div className="flex items-center justify-center h-screen">
           <div className="text-[#5C3D2E]">加载中...</div>
@@ -341,7 +341,7 @@ const FamilyTree = () => {
           </button>
         </div>
       ) : (
-        <div className="family-tree-container pt-24 pb-32 overflow-auto">
+        <div className="family-tree-container pt-8 pb-32 overflow-auto">
           <div className="family-tree">
             <ul>
               {tree.map(node => (
