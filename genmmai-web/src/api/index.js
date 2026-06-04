@@ -40,7 +40,7 @@ export const tagStory = (id, transcript) => api.post(`/stories/${id}/tag`, { tra
 export const getPersonMigrations = (id) => api.get(`/persons/${id}/migrations`);
 export const createMigration = (id, data) => api.post(`/persons/${id}/migrations`, data);
 export const updateMigration = (personId, migrationId, data) => api.patch(`/persons/${personId}/migrations/${migrationId}`, data);
-export const deleteMigration = (personId, migrationId) => api.delete(`/persons/${personId}/migrations/${migrationId}`);
+export const deleteMigration = (personId, migrationId, syncToStory = false) => api.delete(`/persons/${personId}/migrations/${migrationId}?sync_to_story=${syncToStory}`);
 export const suggestMigrations = (id) => api.get(`/persons/${id}/migrations/suggest`);
 
 // 从故事提取迁徙记录

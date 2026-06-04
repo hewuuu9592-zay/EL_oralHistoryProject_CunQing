@@ -216,6 +216,7 @@ class MigrationRecordUpdate(BaseModel):
     longitude: Optional[float] = None
     year: Optional[int] = None
     description: Optional[str] = None
+    sync_to_story: Optional[bool] = False  # 是否同步更新同故事的其他记录
 
 class MigrationRecordResponse(MigrationRecordBase):
     id: str
@@ -610,7 +611,7 @@ def create_migration_record(person_id: str, migration: MigrationRecordCreate, db
 
 
 @app.delete("/persons/{person_id}/migrations/{mid}")
-def delete_migration_record(person_id: str, mid: str, db: Session = Depends(get_db)):
+def delete_migration_record(person_id: str, mid: str, sync_to_story: bool = False, db: Session = Depends(get_db)):
     """删除一条迁徙记录"""
     record = db.query(models.MigrationRecord).filter(
         models.MigrationRecord.id == mid,
@@ -619,7 +620,14 @@ def delete_migration_record(person_id: str, mid: str, db: Session = Depends(get_
     if not record:
         raise HTTPException(status_code=404, detail="迁徙记录不存在")
 
-    db.delete(record)
+    # 如果 sync_to_story=true 且有 source_story_id，删除所有相同 source_story_id 的记录
+    if sync_to_story and record.source_story_id:
+        db.query(models.MigrationRecord).filter(
+            models.MigrationRecord.source_story_id == record.source_story_id
+        ).delete()
+    else:
+        db.delete(record)
+
     db.commit()
     return {"message": "迁徙记录已删除"}
 
@@ -636,6 +644,9 @@ def update_migration_record(person_id: str, mid: str, migration_update: Migratio
 
     update_data = migration_update.model_dump(exclude_unset=True)
 
+    # 提取 sync_to_story 参数
+    sync_to_story = update_data.pop("sync_to_story", False)
+
     # 如果修改了地名且没有提供坐标，重新获取坐标
     if "place_name" in update_data and ("latitude" not in update_data or not update_data.get("latitude")):
         geo_result = geocode_place(update_data["place_name"])
@@ -643,12 +654,22 @@ def update_migration_record(person_id: str, mid: str, migration_update: Migratio
             update_data["latitude"] = geo_result["latitude"]
             update_data["longitude"] = geo_result["longitude"]
 
-    for key, value in update_data.items():
-        if value is not None:
-            setattr(record, key, value)
+    # 如果 sync_to_story=true 且有 source_story_id，同步更新所有相同 source_story_id 的记录
+    if sync_to_story and record.source_story_id:
+        related_records = db.query(models.MigrationRecord).filter(
+            models.MigrationRecord.source_story_id == record.source_story_id
+        ).all()
+        for r in related_records:
+            for key, value in update_data.items():
+                if value is not None:
+                    setattr(r, key, value)
+    else:
+        # 普通更新只更新当前记录
+        for key, value in update_data.items():
+            if value is not None:
+                setattr(record, key, value)
 
     db.commit()
-    db.refresh(record)
     return record
 
 

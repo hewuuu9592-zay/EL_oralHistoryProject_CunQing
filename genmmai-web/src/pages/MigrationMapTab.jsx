@@ -118,8 +118,23 @@ const MigrationMapTab = ({ personId }) => {
   // 保存迁徙记录
   const handleSave = async (data) => {
     try {
+      let syncToStory = false;
+
+      console.log('editing migration:', editingMigration)
+      // 编辑模式且有 source_story_id 时，询问是否同步
+      if (editingMigration && editingMigration.source_story_id) {
+        const shouldSync = confirm(
+          '这条记录来自一个共同故事，是否同步更新到该故事的所有关联人物？\n\n确定 = 同步所有人\n取消 = 只更新当前人物'
+        );
+        if (shouldSync) {
+          syncToStory = true;
+        }
+      }
+
+      const saveData = syncToStory ? { ...data, sync_to_story: true } : data;
+
       if (editingMigration) {
-        await updateMigration(personId, editingMigration.id, data);
+        await updateMigration(personId, editingMigration.id, saveData);
       } else {
         await createMigration(personId, data);
       }
@@ -135,9 +150,26 @@ const MigrationMapTab = ({ personId }) => {
 
   // 删除迁徙记录
   const handleDelete = async (mid) => {
-    if (!confirm('确定删除这条迁徙记录？')) return;
+    // 查找该记录
+    const migration = migrations.find(m => m.id === mid);
+    if (!migration) return;
+
+    let syncToStory = false;
+
+    // 有 source_story_id 时，询问是否同步删除
+    if (migration.source_story_id) {
+      const shouldSync = confirm(
+        '是否同时删除该故事其他关联人物的相同迁徙记录？\n\n确定 = 删除所有人\n取消 = 只删除当前人物'
+      );
+      if (shouldSync) {
+        syncToStory = true;
+      }
+    } else if (!confirm('确定删除这条迁徙记录？')) {
+      return;
+    }
+
     try {
-      await deleteMigration(personId, mid);
+      await deleteMigration(personId, mid, syncToStory);
       const res = await getPersonMigrations(personId);
       setMigrations(res.data || []);
     } catch (e) {
