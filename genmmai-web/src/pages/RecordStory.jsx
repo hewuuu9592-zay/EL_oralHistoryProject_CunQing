@@ -48,6 +48,7 @@ const RecordStory = () => {
   const audioRef = useRef(null);
   const audioBlobRef = useRef(null);
   const fileInputRef = useRef(null);
+  const hasLoadedQuestion = useRef(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -73,23 +74,23 @@ const RecordStory = () => {
 
   // 获取 AI 引导问题
   useEffect(() => {
+    if (!personId || hasLoadedQuestion.current) return
+    
     const fetchQuestion = async () => {
-      setQuestionLoading(true);
+      setQuestionLoading(true)
       try {
-        const response = await getSuggestQuestion(personId);
-        setQuestion(response.data?.question || DEFAULT_QUESTION);
+        const response = await getSuggestQuestion(personId)
+        setQuestion(response.data?.question || DEFAULT_QUESTION)
       } catch (err) {
-        console.error('获取引导问题失败:', err);
-        setQuestion(DEFAULT_QUESTION);
+        setQuestion(DEFAULT_QUESTION)
       } finally {
-        setQuestionLoading(false);
+        setQuestionLoading(false)
       }
-    };
-
-    if (personId && stage === 'record') {
-      fetchQuestion();
     }
-  }, [personId, stage]);
+    
+    hasLoadedQuestion.current = true
+    fetchQuestion()
+  }, [personId])
 
   const refreshQuestion = async () => {
     setQuestionLoading(true);
