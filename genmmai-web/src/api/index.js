@@ -43,6 +43,14 @@ export const updateMigration = (personId, migrationId, data) => api.patch(`/pers
 export const deleteMigration = (personId, migrationId) => api.delete(`/persons/${personId}/migrations/${migrationId}`);
 export const suggestMigrations = (id) => api.get(`/persons/${id}/migrations/suggest`);
 
+// 从故事提取迁徙记录
+export const extractStoryMigrations = (storyId) => api.post(`/stories/${storyId}/extract-migrations`);
+export const confirmStoryMigrations = (storyId, data) => api.post(`/stories/${storyId}/confirm-migrations`, data);
+
+// 一键提取迁徙记录
+export const getUnextractedStories = (personId) => api.get(`/persons/${personId}/unextracted-stories`);
+export const batchExtractMigrations = (personId) => api.post(`/persons/${personId}/batch-extract-migrations`);
+
 // 家族时间轴 API
 export const getFamilyTimeline = (params = {}) => api.get('/family/timeline', { params });
 

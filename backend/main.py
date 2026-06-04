@@ -175,6 +175,37 @@ class MigrationRecordBase(BaseModel):
     longitude: Optional[float] = None
     year: Optional[int] = None
     description: Optional[str] = None
+    source_story_id: Optional[str] = None
+
+
+class MigrateExtractResponseItem(BaseModel):
+    """AI 提取的迁徙建议（单项）"""
+    place_name: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+    confidence: str  # "故事中明确提到" / "推测" / "可能"
+
+
+class MigrateExtractRequest(BaseModel):
+    """提取迁徙记录的请求"""
+    pass  # 空请求体，story_id 从路径获取
+
+
+class MigrateConfirmItem(BaseModel):
+    """确认的迁徙记录（单项）"""
+    place_name: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+    person_ids: List[str] = []
+
+
+class MigrateConfirmRequest(BaseModel):
+    """确认迁徙记录的请求"""
+    migrations: List[MigrateConfirmItem]
 
 class MigrationRecordCreate(MigrationRecordBase):
     pass
@@ -717,6 +748,292 @@ def suggest_migrations(person_id: str, db: Session = Depends(get_db)):
 
     suggestions = extract_locations_from_transcripts(person_id, db)
     return suggestions
+
+
+def extract_locations_from_single_story(story_id: str, db: Session) -> List[dict]:
+    """从单个故事的 transcript 中提取地名和年份"""
+    import requests as httpx_requests
+
+    api_key = os.getenv("ARK_API_KEY", "")
+    if not api_key:
+        return []
+
+    # 获取故事
+    story = db.query(models.Story).filter(models.Story.id == story_id).first()
+    if not story or not story.transcript:
+        return []
+
+    transcript = story.transcript
+
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://ark.cn-beijing.volces.com/api/v3",
+        )
+
+        prompt = f"""从以下口述故事中提取所有明确提到的地名。
+
+要求：
+- 只提取与地点/迁徙相关的提及
+- 如果提到的是模糊地址（如"村里"、"镇上"），请转换为标准地名（如 xx省xx市xx县xx镇）
+- 年份必须是 4 位数字整数
+
+只返回 JSON 数组格式，不要任何其他内容。格式示例：
+[
+  {{"place_name": "xx省xx市", "year": 1990, "description": "在这里发生过...", "confidence": "故事中明确提到"}},
+  {{"place_name": "xx省xx市", "year": 2000, "description": "搬到这里定居", "confidence": "推测"}},
+  {{"place_name": "xx省xx市", "year": null, "description": "来此地探亲", "confidence": "可能"}}
+]
+
+注意：
+- confidence 取值："故事中明确提到"（文本直接说了时间地点）/ "推测"（根据上下文推断）/ "可能"（不太确定）
+- 如果没有提取到任何地名，返回空数组 []
+
+故事内容：
+{transcript}"""
+
+        response = client.chat.completions.create(
+            model="ep-20260521233914-gllp4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+
+        result_text = response.choices[0].message.content.strip()
+
+        # 尝试解析 JSON
+        try:
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0]
+            elif "```" in result_text:
+                result_text = result_text.split("```")[1].split("```")[0]
+
+            return json_lib.loads(result_text.strip())
+        except json_lib.JSONDecodeError:
+            print(f"解析 AI 返回 JSON 失败: {result_text}")
+            return []
+
+    except Exception as e:
+        print(f"豆包 API 调用失败: {str(e)}")
+        return []
+
+
+def geocode_place_nominatim(place_name: str) -> Optional[dict]:
+    """调用 Nominatim API 获取地名坐标"""
+    import requests as httpx_requests
+
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": place_name,
+            "format": "json",
+            "limit": 1,
+        }
+        headers = {
+            "User-Agent": "FamilyTreeApp/1.0"
+        }
+        response = httpx_requests.get(url, params=params, headers=headers, timeout=5)
+        data = response.json()
+
+        if data and len(data) > 0:
+            return {
+                "latitude": float(data[0]["lat"]),
+                "longitude": float(data[0]["lon"])
+            }
+    except Exception as e:
+        print(f"Nominatim API 调用失败: {str(e)}")
+    return None
+
+
+@app.post("/stories/{story_id}/extract-migrations", response_model=List[MigrateExtractResponseItem])
+def extract_story_migrations(story_id: str, db: Session = Depends(get_db)):
+    """从故事中提取迁徙记录建议（不写入数据库）"""
+    # 检查故事是否存在
+    story = db.query(models.Story).filter(models.Story.id == story_id).first()
+    if not story:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    # 调用 AI 提取地名
+    extracted = extract_locations_from_single_story(story_id, db)
+
+    # 为每个地名调用 Nominatim 获取坐标
+    result = []
+    for item in extracted:
+        place_name = item.get("place_name")
+        latitude = None
+        longitude = None
+
+        if place_name:
+            geo_result = geocode_place_nominatim(place_name)
+            if geo_result:
+                latitude = geo_result["latitude"]
+                longitude = geo_result["longitude"]
+
+        result.append(MigrateExtractResponseItem(
+            place_name=place_name,
+            latitude=latitude,
+            longitude=longitude,
+            year=item.get("year"),
+            description=item.get("description"),
+            confidence=item.get("confidence", "可能")
+        ))
+
+    return result
+
+
+@app.post("/stories/{story_id}/confirm-migrations")
+def confirm_story_migrations(story_id: str, request: MigrateConfirmRequest, db: Session = Depends(get_db)):
+    """确认并写入迁徙记录"""
+    # 检查故事是否存在
+    story = db.query(models.Story).filter(models.Story.id == story_id).first()
+    if not story:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    written_count = 0
+    for migration in request.migrations:
+        # 为每个人物写入一条记录
+        for person_id in migration.person_ids:
+            db_record = models.MigrationRecord(
+                person_id=person_id,
+                place_name=migration.place_name,
+                latitude=migration.latitude,
+                longitude=migration.longitude,
+                year=migration.year,
+                description=migration.description,
+                source_story_id=story_id
+            )
+            db.add(db_record)
+            written_count += 1
+
+    db.commit()
+    return {"written_count": written_count}
+
+
+@app.get("/persons/{person_id}/unextracted-stories")
+def get_unextracted_stories(person_id: str, db: Session = Depends(get_db)):
+    """获取该人物尚未提取过迁徙记录的故事"""
+    # 检查人物是否存在
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="人物不存在")
+
+    # 获取该人物关联的所有故事
+    sp_records = db.query(models.StoryPerson).filter(
+        models.StoryPerson.person_id == person_id
+    ).all()
+    story_ids = [sp.story_id for sp in sp_records]
+
+    if not story_ids:
+        return []
+
+    # 找出已有迁徙记录来源的故事 ID
+    extracted_story_ids = db.query(models.MigrationRecord.source_story_id).filter(
+        models.MigrationRecord.source_story_id.in_(story_ids),
+        models.MigrationRecord.source_story_id.isnot(None)
+    ).distinct().all()
+    extracted_story_ids = [s[0] for s in extracted_story_ids]
+
+    # 过滤掉已提取的故事
+    unextracted_ids = [sid for sid in story_ids if sid not in extracted_story_ids]
+
+    if not unextracted_ids:
+        return []
+
+    # 获取故事列表
+    stories = db.query(models.Story).filter(
+        models.Story.id.in_(unextracted_ids),
+        models.Story.transcript.isnot(None),
+        models.Story.transcript != ""
+    ).all()
+
+    return [
+        {
+            "id": s.id,
+            "transcript": s.transcript,
+            "year": s.year,
+            "theme": s.theme
+        }
+        for s in stories
+    ]
+
+
+@app.post("/persons/{person_id}/batch-extract-migrations")
+def batch_extract_migrations(person_id: str, db: Session = Depends(get_db)):
+    """一键提取并写入该人物所有故事的迁徙记录"""
+    # 检查人物是否存在
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="人物不存在")
+
+    # 获取未提取的故事
+    sp_records = db.query(models.StoryPerson).filter(
+        models.StoryPerson.person_id == person_id
+    ).all()
+    story_ids = [sp.story_id for sp in sp_records]
+
+    if not story_ids:
+        return {"written_count": 0, "stories_count": 0}
+
+    # 找出已有迁徙记录来源的故事 ID
+    extracted_story_ids = db.query(models.MigrationRecord.source_story_id).filter(
+        models.MigrationRecord.source_story_id.in_(story_ids),
+        models.MigrationRecord.source_story_id.isnot(None)
+    ).distinct().all()
+    extracted_story_ids = [s[0] for s in extracted_story_ids]
+
+    # 过滤掉已提取的故事
+    unextracted_ids = [sid for sid in story_ids if sid not in extracted_story_ids]
+
+    if not unextracted_ids:
+        return {"written_count": 0, "stories_count": 0}
+
+    written_count = 0
+    target_stories = db.query(models.Story).filter(
+        models.Story.id.in_(unextracted_ids),
+        models.Story.transcript.isnot(None),
+        models.Story.transcript != ""
+    ).all()
+
+    for story in target_stories:
+        # 获取该故事关联的人物列表
+        story_persons = db.query(models.StoryPerson).filter(
+            models.StoryPerson.story_id == story.id
+        ).all()
+        story_person_ids = [sp.person_id for sp in story_persons]
+
+        # 调用 AI 提取地名
+        extracted = extract_locations_from_single_story(story.id, db)
+
+        if not extracted:
+            continue
+
+        # 为每个地点获取坐标
+        for item in extracted:
+            place_name = item.get("place_name")
+            latitude = None
+            longitude = None
+
+            if place_name:
+                geo_result = geocode_place_nominatim(place_name)
+                if geo_result:
+                    latitude = geo_result["latitude"]
+                    longitude = geo_result["longitude"]
+
+            # 为该故事关联的每个人物写入记录
+            for pid in story_person_ids:
+                db_record = models.MigrationRecord(
+                    person_id=pid,
+                    place_name=place_name,
+                    latitude=latitude,
+                    longitude=longitude,
+                    year=item.get("year"),
+                    description=item.get("description"),
+                    source_story_id=story.id
+                )
+                db.add(db_record)
+                written_count += 1
+
+    db.commit()
+    return {"written_count": written_count, "stories_count": len(target_stories)}
 
 
 # ============= FunASR Local Transcription Helper =============
