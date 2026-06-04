@@ -77,6 +77,11 @@ export const getHistoricalEvents = (yearFrom, yearTo) => {
 
 export const getEventStories = (eventId) => api.get(`/historical-events/${eventId}/stories`);
 export const detectStoryHistory = (storyId) => api.post(`/stories/${storyId}/detect-history`);
+
+// 自定义历史事件 API
+export const createCustomEvent = (data) => api.post('/historical-events/custom', data);
+export const updateCustomEvent = (eventId, data) => api.patch(`/historical-events/${eventId}/custom`, data);
+export const deleteCustomEvent = (eventId) => api.delete(`/historical-events/${eventId}/custom`);
 export const getEventMemories = (eventId) => api.get(`/historical-events/${eventId}/memories`);
 export const createEventMemory = (eventId, data) => api.post(`/historical-events/${eventId}/memories`, data);
 export const deleteEventMemory = (eventId, memoryId) => api.delete(`/historical-events/${eventId}/memories/${memoryId}`);

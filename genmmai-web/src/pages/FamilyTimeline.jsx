@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getFamilyTimeline, getPersons, getThemes, getHistoricalEvents, createEventMemory, getEventStories } from '../api';
+import { getFamilyTimeline, getPersons, getThemes, getHistoricalEvents, createEventMemory, getEventStories, createCustomEvent, updateCustomEvent, deleteCustomEvent } from '../api';
 import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
 const CATEGORY_ICONS = {
@@ -28,6 +28,7 @@ const FilterBar = ({
   setSelectedThemes,
   themes,
   getThemeStyle,
+  onAddCustomEvent,
 }) => {
   const toggleTheme = (theme) => {
     if (selectedThemes.includes(theme)) {
@@ -138,6 +139,16 @@ const FilterBar = ({
             已选 {selectedPersons.length} 人
           </span>
         )}
+
+        {/* 添加自定义历史事件按钮 */}
+        {onAddCustomEvent && (
+          <button
+            onClick={onAddCustomEvent}
+            className="ml-4 px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
+          >
+            + 添加历史事件
+          </button>
+        )}
       </div>
     </div>
   );
@@ -209,12 +220,14 @@ const StoryCard = ({ story }) => {
 };
 
 // 历史事件卡片组件
-const HistoryEventCard = ({ event, onAddMemory }) => {
+const HistoryEventCard = ({ event, onAddMemory, onEditEvent, onDeleteEvent }) => {
   const [showInput, setShowInput] = useState(false);
   const [content, setContent] = useState('');
   const [showRelatedStories, setShowRelatedStories] = useState(false);
   const [relatedStories, setRelatedStories] = useState([]);
   const [loadingStories, setLoadingStories] = useState(false);
+
+  const isCustom = event.is_custom;
 
   const handleSubmit = () => {
     if (content.trim()) {
@@ -245,18 +258,44 @@ const HistoryEventCard = ({ event, onAddMemory }) => {
   const icon = EVENT_CATEGORY_ICONS[event.category] || '📌';
   const isLarge = event.importance === 3;
 
+  // 自定义事件用紫色样式
+  const cardBg = isCustom ? '#F5F0FF' : '#F0F4F8';
+  const cardBorder = isCustom ? '#9333EA' : 'gray-300';
+  const cardHoverBorder = isCustom ? '#9333EA' : 'gray-400';
+
   return (
     <div
-      className={`p-3 bg-[#F0F4F8] rounded-lg border border-gray-300 hover:border-gray-400 transition-all ${
+      className={`p-3 rounded-lg border hover:border-${cardHoverBorder} transition-all ${
         isLarge ? 'w-52' : 'w-44'
       }`}
+      style={{ backgroundColor: cardBg, borderColor: isCustom ? '#9333EA' : undefined }}
     >
-      {/* 标题和图标 */}
-      <div className="flex items-start gap-2 mb-1">
-        <span className="text-lg">{icon}</span>
-        <div className={`text-[#4A3728] ${isLarge ? 'font-bold' : 'font-medium'}`}>
-          {event.title}
+      {/* 标题和图标 + 编辑删除按钮（自定义事件） */}
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div className="flex items-start gap-2 flex-1">
+          <span className="text-lg">{icon}</span>
+          <div className={`text-[#4A3728] ${isLarge ? 'font-bold' : 'font-medium'}`}>
+            {event.title}
+          </div>
         </div>
+        {isCustom && (
+          <div className="flex gap-1 flex-shrink-0">
+            <button
+              onClick={(e) => { e.stopPropagation(); onEditEvent?.(event); }}
+              className="text-xs text-purple-600 hover:text-purple-800"
+              title="编辑"
+            >
+              ✏️
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDeleteEvent?.(event); }}
+              className="text-xs text-red-500 hover:text-red-700"
+              title="删除"
+            >
+              🗑️
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 年份 */}
@@ -404,6 +443,11 @@ const FamilyTimeline = () => {
   const [selectedPersons, setSelectedPersons] = useState([]);
   const [selectedThemes, setSelectedThemes] = useState([]);
 
+  // 自定义事件状态
+  const [showCustomEventModal, setShowCustomEventModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);  // { eventId, eventTitle }
+
   // 加载数据
   useEffect(() => {
     const fetchData = async () => {
@@ -516,6 +560,51 @@ const FamilyTimeline = () => {
     }
   };
 
+  // 编辑自定义事件
+  const handleEditCustomEvent = (event) => {
+    setEditingEvent(event);
+    setShowCustomEventModal(true);
+  };
+
+  // 删除自定义事件确认
+  const handleDeleteCustomEvent = (event) => {
+    setDeleteConfirm({ eventId: event.id, eventTitle: event.title });
+  };
+
+  // 确认删除自定义事件
+  const confirmDeleteEvent = async () => {
+    if (!deleteConfirm) return;
+    try {
+      await deleteCustomEvent(deleteConfirm.eventId);
+      setDeleteConfirm(null);
+      // 刷新事件列表
+      const eventsRes = await getHistoricalEvents(yearRange[0], yearRange[1]);
+      setEvents(eventsRes.data || []);
+    } catch (e) {
+      console.error('删除失败:', e);
+      alert('删除失败');
+    }
+  };
+
+  // 保存自定义事件（新建或更新）
+  const handleSaveCustomEvent = async (eventData) => {
+    try {
+      if (editingEvent) {
+        await updateCustomEvent(editingEvent.id, eventData);
+      } else {
+        await createCustomEvent(eventData);
+      }
+      setShowCustomEventModal(false);
+      setEditingEvent(null);
+      // 刷新事件列表
+      const eventsRes = await getHistoricalEvents(yearRange[0], yearRange[1]);
+      setEvents(eventsRes.data || []);
+    } catch (e) {
+      console.error('保存失败:', e);
+      alert('保存失败');
+    }
+  };
+
   // 计算年份范围变量
   const yearFrom = yearRange[0] || 1950;
   const yearTo = yearRange[1] || 2025;
@@ -530,6 +619,25 @@ const FamilyTimeline = () => {
 
   return (
     <div className="relative min-h-screen bg-[#FAF7F2]">
+      {/* 自定义事件弹窗 */}
+      {showCustomEventModal && (
+        <CustomEventModal
+          event={editingEvent}
+          onClose={() => { setShowCustomEventModal(false); setEditingEvent(null); }}
+          onSave={handleSaveCustomEvent}
+        />
+      )}
+
+      {/* 删除确认弹窗 */}
+      {deleteConfirm && (
+        <ConfirmModal
+          title="删除历史事件"
+          message={`确定要删除「${deleteConfirm.eventTitle}」吗？此操作不可恢复。`}
+          onConfirm={confirmDeleteEvent}
+          onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
+
       {/* 筛选栏 */}
       <FilterBar
         persons={persons}
@@ -541,6 +649,7 @@ const FamilyTimeline = () => {
         setSelectedThemes={setSelectedThemes}
         themes={themes}
         getThemeStyle={getThemeStyle}
+        onAddCustomEvent={() => { setEditingEvent(null); setShowCustomEventModal(true); }}
       />
 
       {/* 时间轴内容 */}
@@ -591,6 +700,8 @@ const FamilyTimeline = () => {
                       <HistoryEventCard
                         event={item.data}
                         onAddMemory={handleAddMemory}
+                        onEditEvent={handleEditCustomEvent}
+                        onDeleteEvent={handleDeleteCustomEvent}
                       />
                     </div>
                   );
@@ -615,3 +726,138 @@ const FamilyTimeline = () => {
 };
 
 export default FamilyTimeline;
+
+// 自定义历史事件弹窗
+const CustomEventModal = ({ event, onClose, onSave }) => {
+  const [formData, setFormData] = useState({
+    year: event?.year || '',
+    title: event?.title || '',
+    description: event?.description || '',
+    category: event?.category || '社会',
+    importance: event?.importance || 2,
+  });
+
+  const handleSubmit = () => {
+    if (!formData.year || !formData.title) {
+      alert('请填写年份和标题');
+      return;
+    }
+    onSave({
+      ...formData,
+      year: parseInt(formData.year),
+      importance: parseInt(formData.importance),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-96 max-h-[80vh] overflow-auto">
+        <h3 className="text-lg font-bold text-[#4A3728] mb-4">
+          {event ? '编辑历史事件' : '添加历史事件'}
+        </h3>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-[#8B7355] mb-1">年份 *</label>
+            <input
+              type="number"
+              value={formData.year}
+              onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+              className="w-full border border-[#D4C4B0] rounded px-3 py-2"
+              placeholder="例如: 1990"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#8B7355] mb-1">标题 *</label>
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="w-full border border-[#D4C4B0] rounded px-3 py-2"
+              placeholder="例如: 家庭迁居城市"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#8B7355] mb-1">描述</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full border border-[#D4C4B0] rounded px-3 py-2 resize-none"
+              rows={3}
+              placeholder="事件的详细描述..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#8B7355] mb-1">类别</label>
+            <select
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              className="w-full border border-[#D4C4B0] rounded px-3 py-2"
+            >
+              {Object.keys(EVENT_CATEGORY_ICONS).map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#8B7355] mb-1">重要程度</label>
+            <select
+              value={formData.importance}
+              onChange={(e) => setFormData({ ...formData, importance: e.target.value })}
+              className="w-full border border-[#D4C4B0] rounded px-3 py-2"
+            >
+              <option value={1}>一般</option>
+              <option value={2}>重要</option>
+              <option value={3}>特别重要</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={handleSubmit}
+            className="flex-1 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+          >
+            保存
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 py-2 border border-gray-300 rounded hover:bg-gray-100"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 删除确认弹窗
+const ConfirmModal = ({ title, message, onConfirm, onCancel }) => {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-80">
+        <h3 className="text-lg font-bold text-[#4A3728] mb-2">{title}</h3>
+        <p className="text-sm text-gray-600 mb-4">{message}</p>
+        <div className="flex gap-3">
+          <button
+            onClick={onConfirm}
+            className="flex-1 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+          >
+            删除
+          </button>
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2 border border-gray-300 rounded hover:bg-gray-100"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

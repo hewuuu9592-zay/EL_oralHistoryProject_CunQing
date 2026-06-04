@@ -240,6 +240,21 @@ class HistoricalEventResponse(BaseModel):
     description: Optional[str] = None
     category: str
     importance: int
+    is_custom: Optional[bool] = False
+
+
+class HistoricalEventUpdate(BaseModel):
+    """更新自定义历史事件"""
+    year: Optional[int] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    importance: Optional[int] = None
+
+
+class CustomEventStoryLink(BaseModel):
+    """自定义事件关联的故事"""
+    story_ids: List[str] = []
 
     class Config:
         from_attributes = True
@@ -1706,6 +1721,122 @@ def read_historical_events(
         query = query.filter(models.HistoricalEvent.year <= year_to)
 
     return query.order_by(models.HistoricalEvent.year.asc()).all()
+
+
+@app.post("/historical-events/custom", response_model=HistoricalEventResponse)
+def create_custom_event(
+    request: HistoricalEventUpdate,
+    linked_stories: CustomEventStoryLink = None,
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db)
+):
+    """创建自定义历史事件"""
+    if not request.year:
+        raise HTTPException(status_code=400, detail="年份必填")
+    if not request.title:
+        raise HTTPException(status_code=400, detail="标题必填")
+
+    category = request.category or "其他"
+
+    db_event = models.HistoricalEvent(
+        year=request.year,
+        title=request.title,
+        description=request.description,
+        category=category,
+        importance=request.importance or 1,
+        is_custom=True,
+    )
+    db.add(db_event)
+    db.commit()
+    db.refresh(db_event)
+
+    # 如果有关联故事，批量创建关联
+    if linked_stories and linked_stories.story_ids:
+        for story_id in linked_stories.story_ids:
+            db_rel = models.StoryHistoryRelation(
+                story_id=story_id,
+                event_id=db_event.id
+            )
+            db.add(db_rel)
+        db.commit()
+
+    return db_event
+
+
+@app.patch("/historical-events/{event_id}/custom", response_model=HistoricalEventResponse)
+def update_custom_event(
+    event_id: str,
+    request: HistoricalEventUpdate,
+    linked_stories: CustomEventStoryLink = None,
+    db: Session = Depends(get_db)
+):
+    """更新自定义历史事件（仅限自定义事件）"""
+    event = db.query(models.HistoricalEvent).filter(
+        models.HistoricalEvent.id == event_id
+    ).first()
+
+    if not event:
+        raise HTTPException(status_code=404, detail="历史事件不存在")
+
+    if not event.is_custom:
+        raise HTTPException(status_code=403, detail="预设事件不可编辑")
+
+    # 更新字段
+    if request.year is not None:
+        event.year = request.year
+    if request.title is not None:
+        event.title = request.title
+    if request.description is not None:
+        event.description = request.description
+    if request.category is not None:
+        event.category = request.category
+    if request.importance is not None:
+        event.importance = request.importance
+
+    db.commit()
+    db.refresh(event)
+
+    # 更新关联故事
+    if linked_stories and linked_stories.story_ids:
+        # 删除旧关联
+        db.query(models.StoryHistoryRelation).filter(
+            models.StoryHistoryRelation.event_id == event_id
+        ).delete()
+        # 插入新关联
+        for story_id in linked_stories.story_ids:
+            db_rel = models.StoryHistoryRelation(
+                story_id=story_id,
+                event_id=event_id
+            )
+            db.add(db_rel)
+        db.commit()
+
+    return event
+
+
+@app.delete("/historical-events/{event_id}/custom")
+def delete_custom_event(event_id: str, db: Session = Depends(get_db)):
+    """删除自定义历史事件（仅限自定义事件）"""
+    event = db.query(models.HistoricalEvent).filter(
+        models.HistoricalEvent.id == event_id
+    ).first()
+
+    if not event:
+        raise HTTPException(status_code=404, detail="历史事件不存在")
+
+    if not event.is_custom:
+        raise HTTPException(status_code=403, detail="预设事件不可删除")
+
+    # 删除关联
+    db.query(models.StoryHistoryRelation).filter(
+        models.StoryHistoryRelation.event_id == event_id
+    ).delete()
+
+    # 删除事件
+    db.delete(event)
+    db.commit()
+
+    return {"message": "自定义事件已删除"}
 
 
 @app.post("/historical-events/{event_id}/memories", response_model=EventMemoryResponse)

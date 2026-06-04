@@ -55,6 +55,8 @@ class HistoricalEvent(Base):
     description = Column(Text, nullable=True)
     category = Column(String, nullable=False)  # 政治/经济/社会/文化/战争
     importance = Column(Integer, default=1)  # 1-3，决定卡片大小
+    is_custom = Column(Boolean, default=False)  # 是否自定义
+    created_by = Column(String, nullable=True)  # 创建者ID
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
