@@ -111,3 +111,28 @@ class StoryPerson(Base):
 
     story = relationship("Story", back_populates="story_persons")
     person = relationship("Person", back_populates="stories")
+
+
+class InterviewSession(Base):
+    """采访会话"""
+    __tablename__ = "interview_sessions"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    person_id = Column(String, ForeignKey("persons.id"), nullable=False)
+    status = Column(String, default="active")  # active/completed/abandoned
+    topic_hint = Column(String, nullable=True)  # 本次采访的主题方向
+    round_count = Column(Integer, default=0)  # 实际轮次数
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class InterviewRound(Base):
+    """采访轮次"""
+    __tablename__ = "interview_rounds"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    session_id = Column(String, ForeignKey("interview_sessions.id"), nullable=False)
+    round_index = Column(Integer, nullable=False)  # 第几轮，从1开始
+    question = Column(Text, nullable=True)  # AI生成的问题文字
+    audio_url = Column(String, nullable=True)  # 老人回答的语音文件路径
+    transcript = Column(Text, nullable=True)  # 转写文字
+    transcript_status = Column(String, default="pending")  # pending/processing/done/failed
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

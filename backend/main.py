@@ -103,6 +103,52 @@ class StoryBase(BaseModel):
 class TagRequest(BaseModel):
     transcript: str
 
+
+# ============= Interview Models =============
+
+class InterviewStartResponse(BaseModel):
+    """开始采访响应"""
+    session_id: str
+    question: str
+    round_index: int
+    topic_hint: str
+
+
+class InterviewAnswerResponse(BaseModel):
+    """回答问题响应"""
+    round_id: str
+    transcript_status: str
+
+
+class InterviewRoundStatusResponse(BaseModel):
+    """轮询转写状态响应"""
+    transcript: Optional[str] = None
+    status: str
+
+
+class InterviewNextQuestionResponse(BaseModel):
+    """下一问题响应"""
+    question: str
+    round_index: int
+    should_end: bool
+
+
+class InterviewCompleteResponse(BaseModel):
+    """完成采访响应"""
+    session_id: str
+    stories_created: int
+
+
+class InterviewSessionBrief(BaseModel):
+    """采访记录概要"""
+    session_id: str
+    created_at: Optional[datetime] = None
+    round_count: int
+    status: str
+    topic_hint: Optional[str] = None
+    stories_created: int = 0
+
+
 class StoryCreate(StoryBase):
     pass
 
@@ -589,6 +635,492 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
         question = fallback_questions.get(suggested_theme, "您有什么想留给后代的故事吗？")
 
     return {"question": question, "suggested_theme": suggested_theme}
+
+
+# ============= Interview APIs =============
+
+@app.post("/persons/{person_id}/interviews/start", response_model=InterviewStartResponse)
+def start_interview(person_id: str, db: Session = Depends(get_db)):
+    """开始一次采访会话"""
+    # 检查人物是否存在
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="人物不存在")
+
+    # 分析该人物已有故事的空白主题
+    sp_records = db.query(models.StoryPerson).filter(
+        models.StoryPerson.person_id == person_id
+    ).all()
+    story_ids = [sp.story_id for sp in sp_records]
+
+    existing_themes = []
+    missing_themes = []
+    if story_ids:
+        stories = db.query(models.Story.theme).filter(
+            models.Story.id.in_(story_ids)
+        ).all()
+        existing_themes = [s.theme for s in stories if s.theme]
+        missing_themes = [t for t in THEMES if t not in existing_themes]
+
+    # 确定本次采访的主题方向
+    suggested_theme = missing_themes[0] if missing_themes else (
+        random.choice(existing_themes) if existing_themes else random.choice(THEMES)
+    )
+    topic_hint = suggested_theme
+
+    # 生成第一个引导问题（结合历史语境）
+    api_key = os.getenv("ARK_API_KEY", "")
+    question = None
+    birth_year = person.birth_year or 1950
+
+    # 查询生命跨度内的重大历史事件
+    current_year = datetime.now().year
+    major_events = db.query(models.HistoricalEvent).filter(
+        models.HistoricalEvent.year >= birth_year,
+        models.HistoricalEvent.year <= current_year,
+        models.HistoricalEvent.importance >= 2
+    ).order_by(models.HistoricalEvent.year.asc()).all()
+    events_list = [f"{e.year}年{e.title}" for e in major_events][:8]
+    events_str = "、".join(events_list) if events_list else "暂无重大历史事件"
+
+    existing_str = "、".join(existing_themes) if existing_themes else "暂无"
+    pronoun = "她" if person.gender == "女" else "他"
+
+    if api_key:
+        try:
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://ark.cn-beijing.volces.com/api/v3",
+            )
+
+            prompt = f"""你是一位温柔的家族记忆采访者。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：{events_str}。{pronoun}已经讲述了这些主题的故事：{existing_str}。请为'{suggested_theme}'这个主题，生成第一个温暖具体的引导问题。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身。"""
+
+            response = client.chat.completions.create(
+                model="ep-20260521233914-gllp4",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+            )
+
+            question = response.choices[0].message.content.strip()
+            if question.startswith('"') and question.endswith('"'):
+                question = question[1:-1]
+
+        except Exception as e:
+            print(f"豆包 API 调用失败: {str(e)}")
+            question = None
+
+    if not question:
+        fallback_qs = {
+            "家乡记忆": f"{person.name}给我们讲讲您小时候的故事吧？",
+            "工作岁月": f"{person.name}您年轻时候有什么难忘的工作经历？",
+            "爱情婚姻": f"{person.name}您是怎么认识家人的？",
+            "历史亲历": f"{person.name}您还记得那些年经历过的特别的事吗？",
+            "家族传承": f"{person.name}家里有什么传统想传给我们的？",
+            "童年往事": f"{person.name}您小时候有什么有趣的故事？",
+            "其他": f"{person.name}您有什么想留给后代的故事吗？",
+        }
+        question = fallback_qs.get(suggested_theme, f"{person.name}给我们讲讲您的故事吧？")
+
+    # 创建采访会话
+    session = models.InterviewSession(
+        person_id=person_id,
+        status="active",
+        topic_hint=topic_hint,
+        round_count=1,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    # 创建第一轮记录（问题）
+    round_record = models.InterviewRound(
+        session_id=session.id,
+        round_index=1,
+        question=question,
+    )
+    db.add(round_record)
+    db.commit()
+
+    return InterviewStartResponse(
+        session_id=session.id,
+        question=question,
+        round_index=1,
+        topic_hint=topic_hint,
+    )
+
+
+@app.post("/interviews/{session_id}/answer", response_model=InterviewAnswerResponse)
+async def submit_answer(session_id: str, audio_file: UploadFile, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """接收音频回答，创建轮次记录"""
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.id == session_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="采访会话不存在")
+    if session.status != "active":
+        raise HTTPException(status_code=400, detail="采访会话已结束")
+
+    # 获取当前轮次
+    current_round_index = session.round_count
+
+    # 保存音频文件
+    audio_dir = Path("static/audio/interviews")
+    audio_dir.mkdir(parents=True, exist_ok=True)
+
+    audio_filename = f"{session_id}_{current_round_index}.webm"
+    audio_path = audio_dir / audio_filename
+    content = await audio_file.read()
+    with open(audio_path, "wb") as f:
+        f.write(content)
+
+    audio_url = f"/static/audio/interviews/{audio_filename}"
+
+    # 创建轮次记录
+    round_record = models.InterviewRound(
+        session_id=session_id,
+        round_index=current_round_index,
+        audio_url=audio_url,
+        transcript_status="processing",
+    )
+    db.add(round_record)
+
+    # 更新会话轮次
+    session.round_count = current_round_index + 1
+
+    db.commit()
+    db.refresh(round_record)
+
+    # 后台转写
+    background_tasks.add_task(transcribe_audio_task, str(audio_path), round_record.id)
+
+    return InterviewAnswerResponse(
+        round_id=round_record.id,
+        transcript_status="processing",
+    )
+
+
+async def transcribe_audio_task(audio_path: str, round_id: str):
+    """后台转写音频"""
+    db = SessionLocal()
+    try:
+        round_record = db.query(models.InterviewRound).filter(
+            models.InterviewRound.id == round_id
+        ).first()
+        if not round_record:
+            return
+
+        # 调用 FunASR 转写
+        transcript = transcribe_local(audio_path)
+        round_record.transcript = transcript
+        round_record.transcript_status = "done"
+        db.commit()
+
+    except Exception as e:
+        print(f"转写失败: {e}")
+        round_record.transcript_status = "failed"
+        db.commit()
+    finally:
+        db.close()
+
+
+@app.get("/interviews/{session_id}/rounds/{round_id}/status", response_model=InterviewRoundStatusResponse)
+def get_round_status(session_id: str, round_id: str, db: Session = Depends(get_db)):
+    """轮询转写状态"""
+    round_record = db.query(models.InterviewRound).filter(
+        models.InterviewRound.id == round_id
+    ).first()
+    if not round_record:
+        raise HTTPException(status_code=404, detail="轮次不存在")
+
+    return InterviewRoundStatusResponse(
+        transcript=round_record.transcript,
+        status=round_record.transcript_status,
+    )
+
+
+@app.post("/interviews/{session_id}/next-question", response_model=InterviewNextQuestionResponse)
+def get_next_question(session_id: str, request: dict, db: Session = Depends(get_db)):
+    """生成追问"""
+    round_id = request.get("round_id")
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.id == session_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="采访会话不存在")
+    if session.status != "active":
+        raise HTTPException(status_code=400, detail="采访会话已结束")
+
+    # 获取上一轮的文字
+    last_round = db.query(models.InterviewRound).filter(
+        models.InterviewRound.id == round_id
+    ).first()
+    if not last_round or not last_round.transcript:
+        raise HTTPException(status_code=400, detail="上一轮转写未完成")
+
+    latest_transcript = last_round.transcript
+
+    # 获取本会话所有历史轮次
+    all_rounds = db.query(models.InterviewRound).filter(
+        models.InterviewRound.session_id == session_id,
+        models.InterviewRound.transcript.isnot(None)
+    ).order_by(models.InterviewRound.round_index.asc()).all()
+
+    # 构建对话历史
+    history_parts = []
+    for r in all_rounds:
+        if r.question:
+            history_parts.append(f"问：{r.question}")
+        if r.transcript:
+            history_parts.append(f"答：{r.transcript[:100]}...")
+    history = "\n".join(history_parts)
+
+    current_index = session.round_count
+    should_end = current_index >= 5
+
+    # 调用豆包生成追问
+    api_key = os.getenv("ARK_API_KEY", "")
+    question = None
+
+    person = db.query(models.Person).filter(
+        models.Person.id == session.person_id
+    ).first()
+    pronoun = "她" if person and person.gender == "女" else "他"
+
+    if api_key:
+        try:
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://ark.cn-beijing.volces.com/api/v3",
+            )
+
+            prompt = f"""你是一位温柔的家族记忆采访者。
+以下是对话历史：
+{history}
+
+{pronoun}刚才说：{latest_transcript}
+
+请根据他/她的回答，生成一个有针对性的追问。要求：抓住回答中最有价值的细节深挖，口语化，像晚辈在追问长辈，不超过35字。如果话题已经充分展开（超过3轮），可以温和地引向新角度并设置should_end=true。
+直接返回JSON格式：{{"question": "追问内容", "should_end": true/false}}，不要任何前缀。"""
+
+            response = client.chat.completions.create(
+                model="ep-20260521233914-gllp4",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+            )
+
+            result_text = response.choices[0].message.content.strip()
+            # 尝试解析 JSON
+            import json as json_lib
+            try:
+                if "```json" in result_text:
+                    result_text = result_text.split("```json")[1].split("```")[0]
+                result = json_lib.loads(result_text.strip())
+                question = result.get("question", "")
+                # should_end 已经从上面判断了
+            except:
+                question = result_text
+
+            if question.startswith('"') and question.endswith('"'):
+                question = question[1:-1]
+
+        except Exception as e:
+            print(f"豆包 API 调用失败: {str(e)}")
+            question = None
+
+    if not question:
+        question = "您能再多讲讲当时的情形吗？"
+
+    # 创建新一轮问题记录
+    new_round = models.InterviewRound(
+        session_id=session_id,
+        round_index=current_index,
+        question=question,
+    )
+    db.add(new_round)
+    session.round_count = current_index + 1
+    db.commit()
+
+    return InterviewNextQuestionResponse(
+        question=question,
+        round_index=current_index,
+        should_end=should_end,
+    )
+
+
+@app.post("/interviews/{session_id}/complete", response_model=InterviewCompleteResponse)
+def complete_interview(session_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """完成采访，自动整理故事"""
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.id == session_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="采访会话不存在")
+
+    if session.status != "active":
+        raise HTTPException(status_code=400, detail="采访会话已结束")
+
+    # 标记完成
+    session.status = "completed"
+    session.completed_at = datetime.now()
+    db.commit()
+
+    # 后台整理故事
+    background_tasks.add_task(compile_interview_stories_task, session_id)
+
+    return InterviewCompleteResponse(
+        session_id=session_id,
+        stories_created=0,  # 后台处理中
+    )
+
+
+async def compile_interview_stories_task(session_id: str):
+    """后台整理采访为故事"""
+    db = SessionLocal()
+    try:
+        session = db.query(models.InterviewSession).filter(
+            models.InterviewSession.id == session_id
+        ).first()
+        if not session:
+            return
+
+        # 收集所有转写
+        rounds = db.query(models.InterviewRound).filter(
+            models.InterviewRound.session_id == session_id,
+            models.InterviewRound.transcript.isnot(None),
+            models.InterviewRound.transcript_status == "done"
+        ).order_by(models.InterviewRound.round_index.asc()).all()
+
+        all_transcripts = [r.transcript for r in rounds if r.transcript]
+        if not all_transcripts:
+            return
+
+        combined_text = "\n\n".join(all_transcripts)
+
+        # 调用豆包分析提取故事
+        api_key = os.getenv("ARK_API_KEY", "")
+        if not api_key:
+            return
+
+        try:
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://ark.cn-beijing.volces.com/api/v3",
+            )
+
+            # 获取可用主题
+            theme_options = "/".join(THEMES)
+
+            prompt = f"""请从以下采访内容中提取1-3个独立的故事片段，每个片段要有：
+- summary：一句话摘要
+- year：故事发生的大致年份
+- theme：从以下主题选择：{theme_options}
+
+只返回JSON数组格式，不要任何其他内容：
+[
+  {{"summary": "摘要1", "year": 1990, "theme": "工作岁月"}},
+  {{"summary": "摘要2", "year": 1985, "theme": "童年往事"}}
+]
+
+采访内容：
+{combined_text[:3000]}"""
+
+            response = client.chat.completions.create(
+                model="ep-20260521233914-gllp4",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+            )
+
+            result_text = response.choices[0].message.content.strip()
+
+            import json as json_lib
+            stories_data = []
+
+            try:
+                if "```json" in result_text:
+                    result_text = result_text.split("```json")[1].split("```")[0]
+                stories_data = json_lib.loads(result_text.strip())
+            except json_lib.JSONDecodeError as e:
+                print(f"解析故事JSON失败: {e}, 内容: {result_text}")
+                return
+
+            # 创建故事记录
+            stories_created = 0
+            for story_data in stories_data:
+                if not story_data.get("summary"):
+                    continue
+
+                story = models.Story(
+                    person_ids=json_lib.dumps([session.person_id]),
+                    summary=story_data.get("summary", "")[:100],
+                    year=story_data.get("year"),
+                    theme=story_data.get("theme", "其他"),
+                    transcript=combined_text[:500],
+                    transcription_status="done",
+                    ai_tag_status="done",
+                )
+                db.add(story)
+                db.flush()
+
+                # 关联人物
+                sp = models.StoryPerson(
+                    story_id=story.id,
+                    person_id=session.person_id,
+                    is_protagonist=True,
+                )
+                db.add(sp)
+                stories_created += 1
+
+            db.commit()
+
+        except Exception as e:
+            print(f"整理故事失败: {str(e)}")
+
+    finally:
+        db.close()
+
+
+@app.post("/interviews/{session_id}/abandon")
+def abandon_interview(session_id: str, db: Session = Depends(get_db)):
+    """放弃采访"""
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.id == session_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="采访会话不存在")
+
+    session.status = "abandoned"
+    db.commit()
+
+    return {"message": "采访已放弃"}
+
+
+@app.get("/persons/{person_id}/interviews", response_model=List[InterviewSessionBrief])
+def get_person_interviews(person_id: str, db: Session = Depends(get_db)):
+    """获取该人物的所有采访记录"""
+    sessions = db.query(models.InterviewSession).filter(
+        models.InterviewSession.person_id == person_id
+    ).order_by(models.InterviewSession.created_at.desc()).all()
+
+    result = []
+    for session in sessions:
+        # 统计生成的故事数量
+        stories_count = 0
+        if session.status == "completed":
+            # 通过 session_id 查找关联的 story（通过 person_id）
+            stories_count = db.query(models.Story).filter(
+                models.Story.person_ids.contains(session.person_id)
+            ).count()
+
+        result.append(InterviewSessionBrief(
+            session_id=session.id,
+            created_at=session.created_at,
+            round_count=session.round_count,
+            status=session.status,
+            topic_hint=session.topic_hint,
+            stories_created=stories_count,
+        ))
+
+    return result
 
 
 @app.get("/persons/{person_id}/relations")
