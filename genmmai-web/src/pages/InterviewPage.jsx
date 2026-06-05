@@ -294,13 +294,17 @@ const InterviewPage = () => {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  // 清理
+  // 清理：组件卸载时放弃空记录
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      // 如果 session 存在但没有任何轮次，自动放弃
+      if (session && session.rounds?.length === 0) {
+        abandonInterview(session.id).catch(console.error);
+      }
     };
-  }, []);
+  }, [session]);
 
   if (loading) {
     return (

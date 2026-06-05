@@ -647,6 +647,18 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
     if not person:
         raise HTTPException(status_code=404, detail="人物不存在")
 
+    # 清理：删除该人物的空记录（status='active' 且 round_count=0）
+    empty_sessions = db.query(models.InterviewSession).filter(
+        models.InterviewSession.person_id == person_id,
+        models.InterviewSession.status == "active",
+        models.InterviewSession.round_count == 0,
+    ).all()
+    for es in empty_sessions:
+        # 删除关联的 rounds
+        db.query(models.InterviewRound).filter(models.InterviewRound.session_id == es.id).delete()
+        db.delete(es)
+    db.commit()
+
     # 获取用户偏好的主题
     preferred_themes = request.get("preferred_themes", [])
     preferred_str = "、".join(preferred_themes) if preferred_themes else ""
@@ -1113,8 +1125,13 @@ def abandon_interview(session_id: str, db: Session = Depends(get_db)):
 @app.get("/persons/{person_id}/interviews", response_model=List[InterviewSessionBrief])
 def get_person_interviews(person_id: str, db: Session = Depends(get_db)):
     """获取该人物的所有采访记录"""
+    # 过滤：排除 round_count=0 且 status != 'active' 的无效记录
     sessions = db.query(models.InterviewSession).filter(
-        models.InterviewSession.person_id == person_id
+        models.InterviewSession.person_id == person_id,
+        ~(
+            models.InterviewSession.round_count == 0 &
+            models.InterviewSession.status != "active"
+        )
     ).order_by(models.InterviewSession.created_at.desc()).all()
 
     result = []
