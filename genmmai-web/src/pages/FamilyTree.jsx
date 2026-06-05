@@ -352,7 +352,7 @@ const FamilyTree = () => {
                             )}
                           </div>
                           <span className="text-xs text-[#4A3728] mt-1 truncate max-w-16">
-                            {isActive ? '继续采访' : p.name}
+                            {p.name}
                           </span>
                         </div>
                       )
