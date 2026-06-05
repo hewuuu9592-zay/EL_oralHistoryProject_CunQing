@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deletePersonForce, deleteRelationship, getPersonInterviews, startInterview } from '../api'
+import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deletePersonForce, deleteRelationship, getPersonInterviews, startInterview, uploadAndProcessAudio } from '../api'
 import FamilyTimeline from './FamilyTimeline'
 import FamilyMigrationMap from './FamilyMigrationMap'
 
@@ -143,6 +143,8 @@ const FamilyTree = () => {
   const [totalStories, setTotalStories] = useState(0)
   const [activeTab, setActiveTab] = useState('today') // today | tree | history | map
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
+  const [selectedPerson, setSelectedPerson] = useState(null)
+  const [uploading, setUploading] = useState(false)
 
   // 从 URL 参数切换到历史时间轴标签并高亮事件
   useEffect(() => {
@@ -315,41 +317,67 @@ const FamilyTree = () => {
   }
 
   // 今日录入组件
-  const TodayInterview = () => (
-    <div className="p-4">
-      {persons.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-[#C9A84C]">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-medium text-[#4A3728]">今天想聊聊谁的故事？</h2>
-            <span className="text-xs text-gray-400">
-              已记录{totalStories}个故事 · {persons.length}位成员
-            </span>
-          </div>
+  const TodayInterview = () => {
+    const fileInputRef = React.useRef(null)
 
-          {/* 成员头像列表 */}
+    const handleFileSelect = async (e) => {
+      const file = e.target.files?.[0]
+      if (!file || !selectedPerson) return
+
+      const ext = file.name.split('.').pop().toLowerCase()
+      if (!['mp3', 'wav', 'm4a', 'webm'].includes(ext)) {
+        alert('请选择 mp3/wav/m4a/webm 格式的音频文件')
+        return
+      }
+
+      setUploading(true)
+      try {
+        await uploadAndProcessAudio(file, selectedPerson.id)
+        navigate(`/record?personId=${selectedPerson.id}&uploaded=true`)
+      } catch (err) {
+        console.error('上传失败:', err)
+        alert('上传失败，请重试')
+      } finally {
+        setUploading(false)
+      }
+    }
+
+    return (
+      <div className="p-6 max-w-2xl mx-auto">
+        {/* 第一部分：选择人物 */}
+        <div className="mb-8">
+          <h2 className="text-xl font-medium text-[#4A3728] mb-4">今天想和谁聊聊？</h2>
           <div className="flex gap-4 overflow-x-auto pb-2">
             {persons.map((p) => {
-              const active = activeSessions[p.id];
-              const isActive = active && active.status === 'active';
+              const active = activeSessions[p.id]
+              const isActive = active && active.status === 'active'
+              const isSelected = selectedPerson?.id === p.id
               return (
                 <div
                   key={p.id}
-                  onClick={() => isActive ? handleInterview(p) : navigate(`/interview?personId=${p.id}`)}
-                  className="flex flex-col items-center flex-shrink-0 cursor-pointer"
+                  onClick={() => setSelectedPerson(p)}
+                  className={`flex flex-col items-center flex-shrink-0 cursor-pointer ${
+                    isSelected ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+                  }`}
                 >
                   <div className="relative">
-                    <div className="w-14 h-14 rounded-full bg-[#D4A574] flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
+                    <div
+                      className={`w-[60px] h-[60px] rounded-full flex items-center justify-center overflow-hidden border-2 shadow-sm ${
+                        isSelected ? 'border-[#5C3D2E] border-4' : 'border-white'
+                      }`}
+                      style={{ backgroundColor: '#D4A574' }}
+                    >
                       {p.avatar_url ? (
                         <img src={p.avatar_url} className="w-full h-full object-cover" />
                       ) : (
-                        <span className="text-white text-lg font-medium">{p.name?.charAt(0)}</span>
+                        <span className="text-white text-xl font-medium">{p.name?.charAt(0)}</span>
                       )}
                     </div>
                     {isActive && (
-                      <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-400 rounded-full" />
+                      <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-400 rounded-full border-2 border-white" />
                     )}
                   </div>
-                  <span className="text-xs text-[#4A3728] mt-1 truncate max-w-16">
+                  <span className="text-sm text-[#4A3728] mt-2 truncate max-w-[60px]">
                     {p.name}
                   </span>
                 </div>
@@ -357,9 +385,80 @@ const FamilyTree = () => {
             })}
           </div>
         </div>
-      )}
-    </div>
-  )
+
+        {/* 第二部分：选择录入方式 */}
+        {selectedPerson && (
+          <div>
+            <h3 className="text-lg font-medium text-[#4A3728] mb-4">
+              与 {selectedPerson.name} 的今日对话
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              {/* AI 采访卡片 */}
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-[#E5DED3]">
+                <div className="text-3xl mb-3">🤖</div>
+                <div className="font-medium text-[#4A3728] mb-2">AI 采访</div>
+                <div className="text-sm text-gray-500 mb-4">
+                  由 AI 引导，层层追问，生成结构化故事
+                </div>
+                {activeSessions[selectedPerson.id]?.status === 'active' ? (
+                  <button
+                    onClick={() => navigate(`/interview?personId=${selectedPerson.id}`)}
+                    className="w-full py-2 bg-[#5C3D2E] text-white rounded-lg hover:bg-[#4A3125]"
+                  >
+                    继续采访
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => navigate(`/interview?personId=${selectedPerson.id}`)}
+                    className="w-full py-2 bg-[#5C3D2E] text-white rounded-lg hover:bg-[#4A3125]"
+                  >
+                    开始采访
+                  </button>
+                )}
+              </div>
+
+              {/* 自由录入卡片 */}
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-[#E5DED3]">
+                <div className="text-3xl mb-3">🎙️</div>
+                <div className="font-medium text-[#4A3728] mb-2">自由录入</div>
+                <div className="text-sm text-gray-500 mb-4">
+                  自己说，自己定主题，上传或即时录音都可以
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => navigate(`/record?personId=${selectedPerson.id}`)}
+                    className="py-2 bg-[#F5F5F5] text-[#4A3728] rounded-lg hover:bg-[#E5E5E5] text-sm"
+                  >
+                    🎤 即时录音
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="py-2 bg-[#F5F5F5] text-[#4A3728] rounded-lg hover:bg-[#E5E5E5] text-sm disabled:opacity-50"
+                  >
+                    {uploading ? '上传中...' : '📁 上传文件'}
+                  </button>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".mp3,.wav,.m4a,.webm"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 统计 */}
+        <div className="mt-8 text-center text-sm text-gray-400">
+          已记录 {totalStories} 个故事 · {persons.length} 位成员 ·{' '}
+          {Object.keys(activeSessions).length} 次采访
+        </div>
+      </div>
+    )
+  }
 
   // 侧边栏导航项
   const navItems = [
