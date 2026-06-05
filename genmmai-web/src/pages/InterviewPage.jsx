@@ -45,10 +45,17 @@ const InterviewPage = () => {
       try {
         const res = await getPerson(personId);
         setPerson(res.data);
+
+        // 检查是否继续现有采访
+        const continueSessionId = searchParams.get('continue');
+        if (continueSessionId) {
+          // TODO: 加载已有采访
+        }
       } catch (e) {
         console.error('获取人物失败:', e);
       } finally {
         setLoading(false);
+        setStage('ready');  // 加载完成后进入准备阶段
       }
     };
     fetchPerson();

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deletePersonForce, deleteRelationship } from '../api'
+import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deletePersonForce, deleteRelationship, getPersonInterviews, startInterview } from '../api'
 import FamilyTimeline from './FamilyTimeline'
 import FamilyMigrationMap from './FamilyMigrationMap'
 
@@ -139,6 +139,8 @@ const FamilyTree = () => {
   const [persons, setPersons] = useState([])
   const [relationships, setRelationships] = useState([])
   const [loading, setLoading] = useState(true)
+  const [activeSessions, setActiveSessions] = useState({}); // personId -> session info
+  const [totalStories, setTotalStories] = useState(0)
   const [activeTab, setActiveTab] = useState('tree') // tree | history | map
 
   // 从 URL 参数切换到历史时间轴标签并高亮事件
@@ -174,10 +176,43 @@ const FamilyTree = () => {
       ])
       setPersons(personsRes.data || [])
       setRelationships(relsRes.data || [])
+
+      // 查询每个成员的采访状态
+      const allPersons = personsRes.data || []
+      const sessionsMap = {}
+      let total = 0
+      for (const p of allPersons) {
+        try {
+          const intRes = await getPersonInterviews(p.id)
+          const sessions = intRes.data || []
+          // 找 active 的session
+          const active = sessions.find(s => s.status === 'active')
+          if (active) {
+            sessionsMap[p.id] = active
+          }
+          total += sessions.reduce((sum, s) => sum + (s.stories_created || 0), 0)
+        } catch (e) {
+          console.error('获取采访记录失败:', e)
+        }
+      }
+      setActiveSessions(sessionsMap)
+      setTotalStories(total)
     } catch (error) {
       console.error('Failed to load data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // 直接开始采访或继续采访
+  const handleInterview = async (person) => {
+    const activeSession = activeSessions[person.id]
+    if (activeSession) {
+      // 继续现有采访
+      navigate(`/interview?personId=${person.id}&continue=${activeSession.session_id}`)
+    } else {
+      // 开始新采访
+      navigate(`/interview?personId=${person.id}`)
     }
   }
 
@@ -287,6 +322,53 @@ const FamilyTree = () => {
 
   return (
     <div className="relative min-h-screen bg-[#FAF7F2]">
+      {/* 今日采访入口 */}
+      {persons.length > 0 && (
+        <div className="bg-[#FFFDF5] border-b border-[#E5DED3] px-4 py-4">
+          <div className="max-w-md mx-auto">
+            <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-[#C9A84C]">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-base font-medium text-[#4A3728]">今天想聊聊谁的故事？</h2>
+                <span className="text-xs text-gray-400">
+                  已记录{totalStories}个故事 · {persons.length}位成员
+                </span>
+              </div>
+
+              {/* 成员头像列表 */}
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {persons.map((p) => {
+                  const activeSession = activeSessions[p.id]
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => handleInterview(p)}
+                      className="flex flex-col items-center flex-shrink-0 cursor-pointer"
+                    >
+                      <div className="relative">
+                        <div className="w-14 h-14 rounded-full bg-[#D4A574] flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
+                          {p.avatar_url ? (
+                            <img src={p.avatar_url} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-white text-lg font-medium">{p.name?.charAt(0)}</span>
+                          )}
+                        </div>
+                        {/* 未回答提示点 */}
+                        {!activeSession && (
+                          <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-400 rounded-full" />
+                        )}
+                      </div>
+                      <span className="text-xs text-[#4A3728] mt-1 truncate max-w-16">
+                        {activeSession ? '继续采访' : p.name}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 左上角 Logo */}
       <div className="absolute top-6 left-6 z-10 flex items-center gap-4">
         <h1 className="text-4xl font-serif text-[#5C3D2E]">根脉</h1>
