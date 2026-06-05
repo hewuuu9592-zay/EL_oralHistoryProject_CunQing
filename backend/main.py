@@ -1129,8 +1129,7 @@ def get_person_interviews(person_id: str, db: Session = Depends(get_db)):
     sessions = db.query(models.InterviewSession).filter(
         models.InterviewSession.person_id == person_id,
         ~(
-            models.InterviewSession.round_count == 0 &
-            models.InterviewSession.status != "active"
+            (models.InterviewSession.round_count == 0) & (models.InterviewSession.status != "active")
         )
     ).order_by(models.InterviewSession.created_at.desc()).all()
 

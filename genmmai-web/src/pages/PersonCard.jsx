@@ -811,11 +811,11 @@ const PersonCard = () => {
                 {/* 采访列表 */}
                 <div className="space-y-3">
                   {interviews.map((interview) => (
-                    <div key={interview.id} className="border rounded-lg overflow-hidden">
+                    <div key={interview.session_id} className="border rounded-lg overflow-hidden">
                       <div
                         className="p-3 bg-gray-50 flex items-center justify-between cursor-pointer"
                         onClick={() => setExpandedInterview(
-                          expandedInterview === interview.id ? null : interview.id
+                          expandedInterview === interview.session_id ? null : interview.session_id
                         )}
                       >
                         <div>
@@ -829,7 +829,7 @@ const PersonCard = () => {
                         </div>
                         <svg
                           className={`w-5 h-5 transform transition-transform ${
-                            expandedInterview === interview.id ? 'rotate-180' : ''
+                            expandedInterview === interview.session_id ? 'rotate-180' : ''
                           }`}
                           fill="none"
                           stroke="currentColor"
@@ -838,7 +838,7 @@ const PersonCard = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
-                      {expandedInterview === interview.id && (
+                      {expandedInterview === interview.session_id && (
                         <div className="p-3 border-t">
                           {interview.rounds?.length > 0 ? (
                             <div className="space-y-3">
