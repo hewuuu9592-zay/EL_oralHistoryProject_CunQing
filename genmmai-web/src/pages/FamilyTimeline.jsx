@@ -117,34 +117,49 @@ const FilterBar = ({
         </div>
       </div>
 
-      {/* 人物多选 */}
       <div>
-        <span className="text-sm text-[#8B7355] mr-2">人物：</span>
-        <select
-          multiple
-          className="border border-[#D4C4B0] rounded px-2 py-1 text-sm min-h-[80px]"
-          onChange={(e) => {
-            const options = Array.from(e.target.selectedOptions, (opt) => opt.value);
-            setSelectedPersons(options);
-          }}
-        >
-          {persons.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-        {selectedPersons.length > 0 && (
-          <span className="ml-2 text-xs text-[#C9A84C]">
-            已选 {selectedPersons.length} 人
-          </span>
-        )}
-
-        {/* 添加自定义历史事件按钮 */}
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-sm text-[#8B7355]">人物：</span>
+          <button
+            onClick={() =>
+              selectedPersons.length === persons.length
+                ? setSelectedPersons([])
+                : setSelectedPersons(persons.map(p => p.id))
+            }
+            className="text-xs text-[#C9A84C] underline"
+          >
+            {selectedPersons.length === persons.length ? '取消全选' : '全选'}
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {persons.map((person) => {
+            const isSelected = selectedPersons.includes(person.id)
+            return (
+              <button
+                key={person.id}
+                onClick={() => togglePerson(person.id)}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm border transition-colors ${
+                  isSelected
+                    ? 'bg-[#5C3D2E] text-white border-[#5C3D2E]'
+                    : 'bg-white text-[#4A3728] border-[#D4C4B0] hover:border-[#C9A84C]'
+                }`}
+              >
+                <div className="w-4 h-4 rounded-full bg-[#C9A84C] flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {person.avatar_url
+                    ? <img src={person.avatar_url} className="w-full h-full object-cover" />
+                    : <span className="text-white text-xs">{person.name?.charAt(0)}</span>
+                  }
+                </div>
+                {person.name}
+              </button>
+            )
+          })}
+        </div>
+        {/* 添加自定义历史事件按钮移到这里 */}
         {onAddCustomEvent && (
           <button
             onClick={onAddCustomEvent}
-            className="ml-4 px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
+            className="mt-2 px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
           >
             + 添加历史事件
           </button>
@@ -226,6 +241,7 @@ const HistoryEventCard = ({ event, onAddMemory, onEditEvent, onDeleteEvent }) =>
   const [showRelatedStories, setShowRelatedStories] = useState(false);
   const [relatedStories, setRelatedStories] = useState([]);
   const [loadingStories, setLoadingStories] = useState(false);
+  const navigate = useNavigate(); 
 
   const isCustom = event.is_custom;
 
@@ -480,6 +496,7 @@ const FamilyTimeline = () => {
         try {
           const eventsRes = await getHistoricalEvents(minYear, maxYear);
           setEvents(eventsRes.data || []);
+          console.log('events loaded:', eventsRes.data)
         } catch (e) {
           console.error('加载历史事件失败:', e);
           setEvents([]);
@@ -534,7 +551,7 @@ const FamilyTimeline = () => {
 
     // 添加历史事件
     events.forEach(event => {
-      if (event.year >= yearFrom && event.year <= yearTo) {
+      if (Number(event.year) >= yearFrom && Number(event.year) <= yearTo) {
         items.push({
           type: 'event',
           year: event.year,
@@ -661,58 +678,58 @@ const FamilyTimeline = () => {
             <p className="text-sm text-gray-500">去给家族成员录制故事吧</p>
           </div>
         ) : (
-          <div className="relative">
+          <div className="relative" style={{ minHeight: '100px' }}>
             {/* 轴线 */}
             <div
               className="absolute left-1/3 top-0 bottom-0 w-0.5 bg-[#5C3D2E]"
               style={{ transform: 'translateX(-50%)' }}
             />
 
-            {/* 年份标记 */}
-            <div className="relative mb-4">
-              {Array.from(
-                { length: Math.ceil((yearTo - yearFrom) / 10) + 1 },
-                (_, i) => yearFrom + i * 10
-              ).map((year) => {
-                const topPct = ((year - yearFrom) / (yearTo - yearFrom)) * 100;
-                return (
-                  <div
-                    key={year}
-                    className="absolute text-xs font-bold text-[#5C3D2E] -left-10"
-                    style={{ top: `${topPct}%` }}
-                  >
-                    {year}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* 卡片列表-历史卡片和故事卡片 */}
-            <div className="space-y-3 ml-8">
+            {/* 卡片列表 */}
+            <div className="space-y-3">
               {timelineData.map((item, idx) => {
+                const showYear = idx === 0 || timelineData[idx - 1].year !== item.year;
                 if (item.type === 'event') {
                   return (
-                    <div
-                      key={`event-${item.data.id}`}
-                      className="relative flex justify-end"
-                      style={{ width: '30%', justifyContent: 'flex-end', paddingRight: '16px' }}
-                    >
-                      <HistoryEventCard
-                        event={item.data}
-                        onAddMemory={handleAddMemory}
-                        onEditEvent={handleEditCustomEvent}
-                        onDeleteEvent={handleDeleteCustomEvent}
-                      />
+                    <div key={`event-${item.data.id}`}>
+                      {showYear && (
+                        <div className="flex items-center gap-2 py-1">
+                          <div className="text-xs font-bold text-[#5C3D2E] w-1/3 text-right pr-4">
+                            {item.year}
+                          </div>
+                          <div className="w-2/3" />
+                        </div>
+                      )}
+                      <div
+                        className="relative flex"
+                        style={{ width: '30%', justifyContent: 'flex-end', paddingRight: '16px' }}
+                      >
+                        <HistoryEventCard
+                          event={item.data}
+                          onAddMemory={handleAddMemory}
+                          onEditEvent={handleEditCustomEvent}
+                          onDeleteEvent={handleDeleteCustomEvent}
+                        />
+                      </div>
                     </div>
                   );
                 } else {
                   return (
-                    <div
-                      key={`story-${item.data.id}`}
-                      className="relative"
-                      style={{ marginLeft: '33.33%', maxWidth: '60%' }}
-                    >
-                      <StoryCard story={item.data} />
+                    <div key={`story-${item.data.id}`}>
+                      {showYear && (
+                        <div className="flex items-center gap-2 py-1">
+                          <div className="text-xs font-bold text-[#5C3D2E] w-1/3 text-right pr-4">
+                            {item.year}
+                          </div>
+                          <div className="w-2/3" />
+                        </div>
+                      )}
+                      <div
+                        className="relative"
+                        style={{ marginLeft: '33.33%', maxWidth: '60%' }}
+                      >
+                        <StoryCard story={item.data} />
+                      </div>
                     </div>
                   );
                 }
@@ -723,7 +740,7 @@ const FamilyTimeline = () => {
       </div>
     </div>
   );
-};
+}
 
 export default FamilyTimeline;
 
