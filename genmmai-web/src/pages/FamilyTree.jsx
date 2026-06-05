@@ -395,7 +395,7 @@ const FamilyTree = () => {
             <div className="grid grid-cols-2 gap-4">
               {/* AI 采访卡片 */}
               <div className="bg-white rounded-xl p-6 shadow-sm border border-[#E5DED3]">
-                <div className="text-3xl mb-3">🤖</div>
+                <div className="text-3xl mb-3">AI</div>
                 <div className="font-medium text-[#4A3728] mb-2">AI 采访</div>
                 <div className="text-sm text-gray-500 mb-4">
                   由 AI 引导，层层追问，生成结构化故事
@@ -419,7 +419,7 @@ const FamilyTree = () => {
 
               {/* 自由录入卡片 */}
               <div className="bg-white rounded-xl p-6 shadow-sm border border-[#E5DED3]">
-                <div className="text-3xl mb-3">🎙️</div>
+                <div className="text-3xl mb-3">MIC</div>
                 <div className="font-medium text-[#4A3728] mb-2">自由录入</div>
                 <div className="text-sm text-gray-500 mb-4">
                   自己说，自己定主题，上传或即时录音都可以
@@ -429,14 +429,14 @@ const FamilyTree = () => {
                     onClick={() => navigate(`/record?personId=${selectedPerson.id}`)}
                     className="py-2 bg-[#F5F5F5] text-[#4A3728] rounded-lg hover:bg-[#E5E5E5] text-sm"
                   >
-                    🎤 即时录音
+                    即时录音
                   </button>
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading}
                     className="py-2 bg-[#F5F5F5] text-[#4A3728] rounded-lg hover:bg-[#E5E5E5] text-sm disabled:opacity-50"
                   >
-                    {uploading ? '上传中...' : '📁 上传文件'}
+                    {uploading ? '上传中...' : '上传文件'}
                   </button>
                 </div>
                 <input
@@ -462,10 +462,10 @@ const FamilyTree = () => {
 
   // 侧边栏导航项
   const navItems = [
-    { key: 'today', label: '今日录入', icon: '🎙️' },
-    { key: 'tree', label: '家族树', icon: '🌳' },
-    { key: 'history', label: '家族变迁史', icon: '📜' },
-    { key: 'map', label: '家族迁徙地图', icon: '🗺️' },
+    { key: 'today', label: '今日录入' },
+    { key: 'tree', label: '家族树' },
+    { key: 'history', label: '家族变迁史' },
+    { key: 'map', label: '家族迁徙地图' },
   ]
 
   return (
@@ -491,14 +491,13 @@ const FamilyTree = () => {
             <button
               key={item.key}
               onClick={() => setActiveTab(item.key)}
-              className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${
+              className={`w-full px-4 py-3 transition-colors ${
                 activeTab === item.key
                   ? 'bg-[#5C3D2E] text-white'
                   : 'text-[#4A3728] hover:bg-[#E8DFD0]'
               }`}
             >
-              <span className="text-lg">{item.icon}</span>
-              {sidebarExpanded && <span className="text-sm">{item.label}</span>}
+              <span className="text-sm">{item.label}</span>
             </button>
           ))}
         </div>
@@ -525,9 +524,9 @@ const FamilyTree = () => {
             </span>
             <button
               onClick={() => navigate('/settings')}
-              className="text-xl text-[#8B7355] hover:text-[#5C3D2E]"
+              className="text-sm text-[#8B7355] hover:text-[#5C3D2E]"
             >
-              ⚙️
+              设置
             </button>
           </div>
         </div>
