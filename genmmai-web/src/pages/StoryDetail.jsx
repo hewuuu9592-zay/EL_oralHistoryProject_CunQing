@@ -235,6 +235,16 @@ const StoryDetail = () => {
             </span>
           )}
 
+          {/* 关联历史事件标签 */}
+          {story.related_history && (
+            <button
+              onClick={() => navigate(`/?highlight_event=${story.related_history_id}`)}
+              className="px-3 py-1 rounded-full text-sm bg-[#EEF2F7] text-[#4A3728] hover:underline"
+            >
+              📜 {story.related_history}
+            </button>
+          )}
+
           {/* 编辑按钮 */}
           <button
             onClick={openEditModal}

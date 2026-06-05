@@ -142,6 +142,8 @@ class StoryWithPersons(BaseModel):
     year: Optional[int] = None
     decade: Optional[str] = None
     theme: Optional[str] = None
+    related_history_id: Optional[str] = None
+    related_history: Optional[str] = None
     created_at: Optional[datetime] = None
     transcription_status: Optional[str] = "pending"
     ai_tag_status: Optional[str] = "untagged"
@@ -166,6 +168,8 @@ class StoryUpdate(BaseModel):
     year: Optional[int] = None
     theme: Optional[str] = None
     person_ids: Optional[List[str]] = None
+    related_history_id: Optional[str] = None
+    related_history: Optional[str] = None
 
 # ============= Migration Records =============
 
@@ -1368,7 +1372,8 @@ def extract_structured_info(transcript: str, db=None) -> dict:
             "year": None,
             "decade": None,
             "theme": "其他",
-            "persons_mentioned": []
+            "persons_mentioned": [],
+            "related_history": None
         }
 
     # 动态获取主题列表
@@ -1389,6 +1394,23 @@ def extract_structured_info(transcript: str, db=None) -> dict:
         print(f"获取主题列表失败: {e}")
         theme_options = "其他"
 
+    # 动态获取历史事件列表
+    events_title_list = ""
+    try:
+        if db:
+            events = db.query(models.HistoricalEvent).order_by(models.HistoricalEvent.year.asc()).all()
+            events_title_list = ", ".join([f"{e.year}年{e.title}" for e in events])
+        else:
+            from database import SessionLocal
+            db_temp = SessionLocal()
+            try:
+                events = db_temp.query(models.HistoricalEvent).order_by(models.HistoricalEvent.year.asc()).all()
+                events_title_list = ", ".join([f"{e.year}年{e.title}" for e in events])
+            finally:
+                db_temp.close()
+    except Exception as e:
+        print(f"获取历史事件列表失败: {e}")
+
     try:
         client = OpenAI(
             api_key=api_key,
@@ -1400,8 +1422,11 @@ def extract_structured_info(transcript: str, db=None) -> dict:
   "year": 故事发生年份整数（不确定则返回null）,
   "decade": "年代描述，如1960年代（不确定则返回null）",
   "theme": "从以下选一个最合适的：{theme_options}",
-  "persons_mentioned": ["故事中提到的人名列表，没有则为空数组"]
-}}故事内容：{transcript}"""
+  "persons_mentioned": ["故事中提到的人名列表，没有则为空数组"],
+  "related_history": "推测该故事与哪个历史事件相关，从以下事件列表中选择最匹配的一个，返回格式如「1997年香港回归」，如果是童年趣事、家庭日常等与宏观历史无关的内容返回null"
+}}故事内容：{transcript}
+
+可选历史事件列表：{events_title_list}"""
 
         response = client.chat.completions.create(
             model="ep-20260521233914-gllp4",
@@ -1427,7 +1452,8 @@ def extract_structured_info(transcript: str, db=None) -> dict:
                 "year": result.get("year"),
                 "decade": result.get("decade"),
                 "theme": result.get("theme", "其他"),
-                "persons_mentioned": result.get("persons_mentioned", [])
+                "persons_mentioned": result.get("persons_mentioned", []),
+                "related_history": result.get("related_history")
             }
         except json_lib.JSONDecodeError as e:
             print(f"解析豆包返回JSON失败: {e}, 内容: {result_text}")
@@ -1436,7 +1462,8 @@ def extract_structured_info(transcript: str, db=None) -> dict:
                 "year": None,
                 "decade": None,
                 "theme": "其他",
-                "persons_mentioned": []
+                "persons_mentioned": [],
+                "related_history": None
             }
 
     except Exception as e:
@@ -1446,7 +1473,8 @@ def extract_structured_info(transcript: str, db=None) -> dict:
             "year": None,
             "decade": None,
             "theme": "其他",
-            "persons_mentioned": []
+            "persons_mentioned": [],
+            "related_history": None
         }
 
 
@@ -1553,6 +1581,36 @@ def tag_story(story_id: str, request: TagRequest, db: Session = Depends(get_db))
         story.decade = structured.get("decade")
         story.theme = structured.get("theme", "其他")
         story.person_ids = json_lib.dumps(structured.get("persons_mentioned", []))
+
+        # 处理历史事件关联：只当用户没有手动选择时才覆盖
+        related_history = structured.get("related_history")
+        if related_history and not story.related_history:
+            # 根据标题查询历史事件获取id
+            # 支持 "1997年香港回归" 格式解析
+            import re
+            match = re.match(r"(\d{4})年(.+)", related_history)
+            if match:
+                year_str, title = match.groups()
+                event = db.query(models.HistoricalEvent).filter(
+                    models.HistoricalEvent.year == int(year_str),
+                    models.HistoricalEvent.title == title
+                ).first()
+                if event:
+                    story.related_history_id = event.id
+                    story.related_history = related_history
+                else:
+                    story.related_history = related_history
+            else:
+                # 尝试精确匹配标题
+                event = db.query(models.HistoricalEvent).filter(
+                    models.HistoricalEvent.title == related_history
+                ).first()
+                if event:
+                    story.related_history_id = event.id
+                    story.related_history = related_history
+                else:
+                    story.related_history = related_history
+
         story.ai_tag_status = "done"
         db.commit()
 
@@ -1561,7 +1619,8 @@ def tag_story(story_id: str, request: TagRequest, db: Session = Depends(get_db))
             "year": story.year,
             "decade": story.decade,
             "theme": story.theme,
-            "persons_mentioned": structured.get("persons_mentioned", [])
+            "persons_mentioned": structured.get("persons_mentioned", []),
+            "related_history": story.related_history
         }
 
     except Exception as e:
@@ -1582,6 +1641,8 @@ class FamilyTimelineStory(BaseModel):
     theme: Optional[str] = None
     audio_url: Optional[str] = None
     transcript: Optional[str] = None
+    related_history_id: Optional[str] = None
+    related_history: Optional[str] = None
     persons: List[dict] = []
 
     class Config:

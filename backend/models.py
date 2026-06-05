@@ -94,6 +94,8 @@ class Story(Base):
     year = Column(Integer, nullable=True)
     decade = Column(String, nullable=True)
     theme = Column(String, nullable=True)
+    related_history_id = Column(String, nullable=True)  # 外键关联 historical_events.id
+    related_history = Column(String, nullable=True)  # 冗余存储事件标题
     transcription_status = Column(String, default="pending")  # pending, processing, done, failed
     ai_tag_status = Column(String, default="untagged")  # untagged, processing, done, failed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

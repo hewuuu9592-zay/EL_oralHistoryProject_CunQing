@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getPerson, getPersons, getSuggestQuestion, uploadAndProcessAudio, updateStory, getStory, createStoryPerson, tagStory, extractStoryMigrations, confirmStoryMigrations } from '../api';
+import { getPerson, getPersons, getSuggestQuestion, uploadAndProcessAudio, updateStory, getStory, createStoryPerson, tagStory, extractStoryMigrations, confirmStoryMigrations, getHistoricalEvents, createCustomEvent, patchStory } from '../api';
 import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
 const DEFAULT_QUESTION = "您有什么想留给后代的故事吗？";
@@ -42,6 +42,14 @@ const RecordStory = () => {
   const [migrationsExtracted, setMigrationsExtracted] = useState([]);  // AI 提取的迁徙建议
   const [selectedMigrations, setSelectedMigrations] = useState([]);    // 用户选中的迁徙
   const [extractingMigrations, setExtractingMigrations] = useState(false);
+
+  // 关联历史事件状态
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyResults, setHistoryResults] = useState([]);
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
+  const [selectedHistoryEvent, setSelectedHistoryEvent] = useState(null);  // { id, title }
+  const [showAddEventModal, setShowAddEventModal] = useState(false);
+  const [newEventData, setNewEventData] = useState({ year: '', title: '', description: '', category: '社会' });
 
   // 文件上传状态
   const [isUploading, setIsUploading] = useState(false);
@@ -294,6 +302,8 @@ const RecordStory = () => {
         year: year ? parseInt(year) : null,
         theme: selectedThemes[0] || null,
         person_ids: JSON.stringify(selectedPersons),
+        related_history_id: selectedHistoryEvent?.id || null,
+        related_history: selectedHistoryEvent?.title || null,
       });
 
       // 故事人物关联已经在后端上传时创建了部分，这里补充其他关联
@@ -370,6 +380,68 @@ const RecordStory = () => {
     setSelectedMigrations(prev => prev.map((m, i) =>
       i === index ? { ...m, selected: !m.selected } : m
     ));
+  };
+
+  // 搜索历史事件
+  useEffect(() => {
+    if (!historyQuery.trim()) {
+      setHistoryResults([]);
+      setShowHistoryDropdown(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await getHistoricalEvents(1900, 2030);
+        const allEvents = res.data || [];
+        const filtered = allEvents.filter(e =>
+          e.title?.includes(historyQuery) ||
+          e.year?.toString().includes(historyQuery)
+        ).slice(0, 10);
+        setHistoryResults(filtered);
+        setShowHistoryDropdown(true);
+      } catch (e) {
+        console.error('搜索历史事件失败:', e);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [historyQuery]);
+
+  // 选择历史事件
+  const selectHistoryEvent = (event) => {
+    setSelectedHistoryEvent({ id: event.id, title: `${event.year}年${event.title}` });
+    setHistoryQuery(`${event.year}年${event.title}`);
+    setShowHistoryDropdown(false);
+  };
+
+  // 清空历史事件选择
+  const clearHistoryEvent = () => {
+    setSelectedHistoryEvent(null);
+    setHistoryQuery('');
+  };
+
+  // 添加新历史事件
+  const handleAddNewEvent = async () => {
+    if (!newEventData.year || !newEventData.title) {
+      alert('请填写年份和标题');
+      return;
+    }
+    try {
+      const res = await createCustomEvent({
+        year: parseInt(newEventData.year),
+        title: newEventData.title,
+        description: newEventData.description,
+        category: newEventData.category,
+        importance: 2,
+      });
+      const newEvent = res.data;
+      setSelectedHistoryEvent({ id: newEvent.id, title: `${newEvent.year}年${newEvent.title}` });
+      setHistoryQuery(`${newEvent.year}年${newEvent.title}`);
+      setShowAddEventModal(false);
+      setNewEventData({ year: '', title: '', description: '', category: '社会' });
+    } catch (e) {
+      console.error('添加历史事件失败:', e);
+      alert('添加失败');
+    }
   };
 
   const getNameInitial = (name) => {
@@ -493,6 +565,53 @@ const RecordStory = () => {
               </div>
             </div>
 
+            {/* 关联历史事件 */}
+            <div>
+              <label className="text-xs text-gray-500">关联历史事件</label>
+              <div className="relative mt-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={historyQuery}
+                    onChange={(e) => setHistoryQuery(e.target.value)}
+                    onFocus={() => historyResults.length > 0 && setShowHistoryDropdown(true)}
+                    placeholder="搜索历史事件..."
+                    className="flex-1 border border-[#E5DED3] rounded px-3 py-2 text-sm"
+                  />
+                  {selectedHistoryEvent && (
+                    <button
+                      onClick={clearHistoryEvent}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                <span className="text-xs text-gray-400">可留空，AI 一键标注时会自动推测</span>
+
+                {/* 下拉列表 */}
+                {showHistoryDropdown && historyResults.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-[#E5DED3] rounded-md shadow-lg max-h-48 overflow-auto">
+                    {historyResults.map(event => (
+                      <div
+                        key={event.id}
+                        onClick={() => selectHistoryEvent(event)}
+                        className="px-3 py-2 cursor-pointer hover:bg-gray-50 text-sm"
+                      >
+                        {event.year}年 {event.title}
+                      </div>
+                    ))}
+                    <div
+                      onClick={() => { setShowHistoryDropdown(false); setShowAddEventModal(true); }}
+                      className="px-3 py-2 cursor-pointer hover:bg-purple-50 text-sm text-purple-600 border-t"
+                    >
+                      ＋ 新增历史事件
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* 涉及人物 */}
             <div>
               <label className="text-xs text-gray-500">涉及人物（多选）</label>
@@ -606,6 +725,14 @@ const RecordStory = () => {
   // ===== 录音阶段 =====
   return (
     <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
+      {/* 新增历史事件弹窗 */}
+      {showAddEventModal && (
+        <AddEventModal
+          onClose={() => setShowAddEventModal(false)}
+          onSave={handleAddNewEvent}
+        />
+      )}
+
       {/* 顶部导航 */}
       <div className="bg-white border-b border-[#E5DED3] px-4 py-4">
         <div className="max-w-md mx-auto flex items-center">
@@ -742,3 +869,77 @@ const RecordStory = () => {
 };
 
 export default RecordStory;
+
+// 新增历史事件弹窗
+const AddEventModal = ({ onClose, onSave }) => {
+  const [data, setData] = useState({ year: '', title: '', description: '', category: '社会' });
+
+  const handleSaveClick = () => {
+    if (!data.year || !data.title) {
+      alert('请填写年份和标题');
+      return;
+    }
+    onSave(data);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-96">
+        <h3 className="text-lg font-bold text-[#4A3728] mb-4">添加历史事件</h3>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm text-gray-500 mb-1">年份 *</label>
+            <input
+              type="number"
+              value={data.year}
+              onChange={(e) => setData({ ...data, year: e.target.value })}
+              className="w-full border border-[#E5DED3] rounded px-3 py-2"
+              placeholder="例如: 1990"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-500 mb-1">标题 *</label>
+            <input
+              type="text"
+              value={data.title}
+              onChange={(e) => setData({ ...data, title: e.target.value })}
+              className="w-full border border-[#E5DED3] rounded px-3 py-2"
+              placeholder="例如: 家庭迁居城市"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-500 mb-1">简介</label>
+            <textarea
+              value={data.description}
+              onChange={(e) => setData({ ...data, description: e.target.value })}
+              className="w-full border border-[#E5DED3] rounded px-3 py-2 resize-none"
+              rows={2}
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-500 mb-1">分类</label>
+            <select
+              value={data.category}
+              onChange={(e) => setData({ ...data, category: e.target.value })}
+              className="w-full border border-[#E5DED3] rounded px-3 py-2"
+            >
+              <option value="社会">社会</option>
+              <option value="政治">政治</option>
+              <option value="经济">经济</option>
+              <option value="文化">文化</option>
+              <option value="战争">战争</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex gap-3 mt-4">
+          <button onClick={handleSaveClick} className="flex-1 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">
+            保存
+          </button>
+          <button onClick={onClose} className="flex-1 py-2 border border-gray-300 rounded hover:bg-gray-100">
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

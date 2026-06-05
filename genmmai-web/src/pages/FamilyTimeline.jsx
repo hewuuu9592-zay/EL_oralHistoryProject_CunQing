@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getFamilyTimeline, getPersons, getThemes, getHistoricalEvents, createEventMemory, getEventStories, createCustomEvent, updateCustomEvent, deleteCustomEvent } from '../api';
 import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
@@ -235,15 +235,16 @@ const StoryCard = ({ story }) => {
 };
 
 // 历史事件卡片组件
-const HistoryEventCard = ({ event, onAddMemory, onEditEvent, onDeleteEvent }) => {
+const HistoryEventCard = ({ event, onAddMemory, onEditEvent, onDeleteEvent, highlight }) => {
   const [showInput, setShowInput] = useState(false);
   const [content, setContent] = useState('');
   const [showRelatedStories, setShowRelatedStories] = useState(false);
   const [relatedStories, setRelatedStories] = useState([]);
   const [loadingStories, setLoadingStories] = useState(false);
-  const navigate = useNavigate(); 
+  const navigate = useNavigate();
 
   const isCustom = event.is_custom;
+  const isHighlighted = highlight && event.id === highlight;
 
   const handleSubmit = () => {
     if (content.trim()) {
@@ -275,16 +276,16 @@ const HistoryEventCard = ({ event, onAddMemory, onEditEvent, onDeleteEvent }) =>
   const isLarge = event.importance === 3;
 
   // 自定义事件用紫色样式
-  const cardBg = isCustom ? '#F5F0FF' : '#F0F4F8';
-  const cardBorder = isCustom ? '#9333EA' : 'gray-300';
+  const cardBg = isHighlighted ? '#FEF9C3' : (isCustom ? '#F5F0FF' : '#F0F4F8');
+  const cardBorder = isHighlighted ? '#EAB308' : (isCustom ? '#9333EA' : 'gray-300');
   const cardHoverBorder = isCustom ? '#9333EA' : 'gray-400';
 
   return (
     <div
       className={`p-3 rounded-lg border hover:border-${cardHoverBorder} transition-all ${
         isLarge ? 'w-52' : 'w-44'
-      }`}
-      style={{ backgroundColor: cardBg, borderColor: isCustom ? '#9333EA' : undefined }}
+      } ${isHighlighted ? 'animate-pulse' : ''}`}
+      style={{ backgroundColor: cardBg, borderColor: isHighlighted ? '#EAB308' : (isCustom ? '#9333EA' : undefined) }}
     >
       {/* 标题和图标 + 编辑删除按钮（自定义事件） */}
       <div className="flex items-start justify-between gap-2 mb-1">
@@ -448,6 +449,7 @@ const TimelineAxis = ({ yearFrom, yearTo }) => {
 // 主组件
 const FamilyTimeline = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [stories, setStories] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -463,6 +465,19 @@ const FamilyTimeline = () => {
   const [showCustomEventModal, setShowCustomEventModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);  // { eventId, eventTitle }
+
+  // 高亮事件状态
+  const [highlightEventId, setHighlightEventId] = useState(null);
+
+  // 处理 URL 参数高亮事件
+  useEffect(() => {
+    const eventId = searchParams.get('highlight_event');
+    if (eventId) {
+      setHighlightEventId(eventId);
+      // 3秒后清除高亮
+      setTimeout(() => setHighlightEventId(null), 3000);
+    }
+  }, [searchParams]);
 
   // 加载数据
   useEffect(() => {
@@ -709,6 +724,7 @@ const FamilyTimeline = () => {
                           onAddMemory={handleAddMemory}
                           onEditEvent={handleEditCustomEvent}
                           onDeleteEvent={handleDeleteCustomEvent}
+                          highlight={highlightEventId}
                         />
                       </div>
                     </div>
