@@ -33,6 +33,7 @@ const InterviewPage = () => {
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
+  const scrollRef = useRef(null);
   const pollTimerRef = useRef(null);
 
   // 加载人物信息
@@ -218,6 +219,11 @@ const InterviewPage = () => {
       setAudioUrl(null);
       setRecordingTime(0);
 
+      // 自动滚动到底部
+      setTimeout(() => {
+        scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+
       if (data.should_end) {
         // AI 建议结束，但允许用户继续
       }
@@ -332,14 +338,13 @@ const InterviewPage = () => {
 
   // ========== 阶段二：进行中 ==========
   if (stage === 'interviewing') {
-    const currentQ = rounds[rounds.length - 1]?.question || '请分享您的故事...';
     const roundNum = rounds.length;
     const maxRounds = 5;
 
     return (
       <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
         {/* 顶部进度 */}
-        <div className="bg-white border-b border-[#E5DED3] px-4 py-3">
+        <div className="bg-white border-b border-[#E5DED3] px-4 py-3 flex-shrink-0">
           <div className="flex items-center justify-between max-w-md mx-auto">
             <button onClick={() => navigate(`/person/${personId}`)} className="text-[#4A3728] text-sm">
               ← 退出
@@ -358,42 +363,54 @@ const InterviewPage = () => {
           </div>
         </div>
 
-        {/* 历史轮次 */}
-        <div className="flex-1 overflow-auto p-4">
+        {/* 对话滚动区域 */}
+        <div ref={scrollRef} className="flex-1 overflow-auto p-4">
           <div className="max-w-md mx-auto space-y-4">
-            {rounds.slice(0, -1).map((r, i) => (
-              <div key={i} className="bg-white rounded-lg p-3 shadow-sm">
-                <div className="text-xs text-gray-400 mb-1">第{i + 1}轮</div>
-                <div className="text-sm text-[#4A3728] mb-2">👤 {r.question}</div>
-                {r.transcript && (
-                  <div className="text-sm text-gray-600 pl-3 border-l-2 border-gray-200">
-                    {r.transcript.slice(0, 100)}...
+            {/* 显示所有轮次 */}
+            {rounds.map((r, i) => (
+              <div key={i}>
+                {/* AI问题：左侧气泡 */}
+                <div className="flex items-start gap-2 mb-2">
+                  <div className="w-7 h-7 rounded-full bg-gray-300 flex-shrink-0 flex items-center justify-center text-xs">🎙️</div>
+                  <div className="bg-gray-100 rounded-xl px-3 py-2 text-sm text-[#4A3728] max-w-[80%]">
+                    {r.question}
                   </div>
-                )}
+                </div>
+                {/* 老人回答：右侧气泡 */}
+                <div className="flex justify-end">
+                  <div className="bg-[#FFF8EE] rounded-xl px-3 py-2 text-sm text-gray-700 max-w-[80%]">
+                    {r.transcript ? (
+                      r.transcript
+                    ) : i === rounds.length - 1 && transcribing ? (
+                      // 当前轮转写中
+                      <span className="text-gray-400 animate-pulse">...</span>
+                    ) : i === rounds.length - 1 && !transcribing && !audioUrl ? (
+                      // 当前轮待录音
+                      <span className="text-gray-400">点击下方麦克风回答</span>
+                    ) : i === rounds.length - 1 && !transcribing && audioUrl && !currentRound ? (
+                      // 当前轮已录音待提交
+                      <span className="text-gray-400">回答已录制，点击"提交回答"</span>
+                    ) : (
+                      <span className="text-gray-400">（未录音）</span>
+                    )}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* 当前轮次 */}
-        <div className="p-4 bg-white border-t border-[#E5DED3]">
+        {/* 底部固定操作区 */}
+        <div className="bg-white border-t border-[#E5DED3] p-4 flex-shrink-0">
           <div className="max-w-md mx-auto">
-            {/* AI问题气泡 */}
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-8 h-8 rounded-full bg-gray-300 flex-shrink-0 flex items-center justify-center text-sm">🤖</div>
-              <div className="bg-gray-100 rounded-xl px-4 py-3 text-[#4A3728]">
-                {currentQ}
-              </div>
-            </div>
-
             {/* 统一录音区域 */}
             {!currentRound && !transcribing && (
-              <div className="flex flex-col items-center py-6">
+              <div className="flex flex-col items-center py-2">
                 {/* 待录音状态 */}
                 {!audioUrl && !isRecording && (
                   <button
                     onClick={startRecording}
-                    className="w-20 h-20 rounded-full bg-[#C9A84C] flex items-center justify-center hover:bg-[#D4B85C] transition-all"
+                    className="w-20 h-20 rounded-full bg-[#C9A84C] flex items-center justify-center hover:bg-[#D4B85C] transition-all shadow-lg"
                   >
                     <div className="w-16 h-16 rounded-full bg-[#D4B85C]" />
                   </button>
@@ -405,7 +422,7 @@ const InterviewPage = () => {
                     <div className="text-red-500 font-bold mb-2">{formatTime(recordingTime)}</div>
                     <button
                       onClick={stopRecording}
-                      className="w-20 h-20 rounded-full bg-red-500 flex items-center justify-center"
+                      className="w-20 h-20 rounded-full bg-red-500 flex items-center justify-center shadow-lg"
                     >
                       <div className="w-16 h-16 rounded-full bg-red-600" />
                     </button>
@@ -414,7 +431,7 @@ const InterviewPage = () => {
 
                 {/* 已录音 */}
                 {audioUrl && !isRecording && (
-                  <div className="space-y-3 w-full max-w-xs">
+                  <div className="space-y-3 w-full">
                     <audio src={audioUrl} controls className="w-full" />
                     <div className="flex gap-3 justify-center">
                       <button
@@ -438,19 +455,14 @@ const InterviewPage = () => {
 
             {/* 转写中 */}
             {transcribing && (
-              <div className="flex items-center justify-center py-4">
+              <div className="flex items-center justify-center py-2">
                 <div className="text-[#8B7355]">AI 转写中...</div>
               </div>
             )}
 
-            {/* 转写完成 */}
+            {/* 转写完成 - 显示操作按钮 */}
             {currentRound?.status === 'done' && (
-              <div className="space-y-3">
-                <div className="bg-white rounded-lg p-3 shadow-sm">
-                  <div className="text-xs text-gray-400 mb-1">您的回答</div>
-                  <div className="text-sm text-gray-700">{currentRound.transcript}</div>
-                </div>
-
+              <div className="space-y-2">
                 <div className="flex gap-3">
                   <button
                     onClick={() => handleNextQuestion(false)}
@@ -472,7 +484,7 @@ const InterviewPage = () => {
 
         {/* 跳过按钮 */}
         {!currentRound && !transcribing && !isRecording && (
-          <div className="text-center pb-4">
+          <div className="text-center pb-3">
             <button
               onClick={() => handleNextQuestion(true)}
               className="text-xs text-gray-400"
