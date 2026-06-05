@@ -330,7 +330,8 @@ const FamilyTree = () => {
               {/* 成员头像列表 */}
               <div className="flex gap-4 overflow-x-auto pb-2">
                 {persons.map((p) => {
-                  const isActive = activeSession && activeSession.status === 'active'
+                  const active = activeSessions[p.id];
+                  const isActive = active && active.status === 'active';
                       return (
                         <div
                           key={p.id}
