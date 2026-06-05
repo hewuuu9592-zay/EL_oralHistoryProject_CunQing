@@ -394,10 +394,9 @@ const FamilyTree = () => {
             </h3>
             <div className="grid grid-cols-2 gap-4">
               {/* AI 采访卡片 */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-[#E5DED3]">
-                <div className="text-3xl mb-3">AI</div>
-                <div className="font-medium text-[#4A3728] mb-2">AI 采访</div>
-                <div className="text-sm text-gray-500 mb-4">
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-[#E5DED3] flex flex-col">
+                <div className="font-medium text-[#4A3728] mb-2 text-lg">AI采访</div>
+                <div className="text-sm text-gray-500 mb-4 flex-1">
                   由 AI 引导，层层追问，生成结构化故事
                 </div>
                 {activeSessions[selectedPerson.id]?.status === 'active' ? (
@@ -418,27 +417,17 @@ const FamilyTree = () => {
               </div>
 
               {/* 自由录入卡片 */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-[#E5DED3]">
-                <div className="text-3xl mb-3">MIC</div>
-                <div className="font-medium text-[#4A3728] mb-2">自由录入</div>
-                <div className="text-sm text-gray-500 mb-4">
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-[#E5DED3] flex flex-col">
+                <div className="font-medium text-[#4A3728] mb-2 text-lg">自由录入</div>
+                <div className="text-sm text-gray-500 mb-4 flex-1">
                   自己说，自己定主题，上传或即时录音都可以
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => navigate(`/record?personId=${selectedPerson.id}`)}
-                    className="py-2 bg-[#F5F5F5] text-[#4A3728] rounded-lg hover:bg-[#E5E5E5] text-sm"
-                  >
-                    即时录音
-                  </button>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="py-2 bg-[#F5F5F5] text-[#4A3728] rounded-lg hover:bg-[#E5E5E5] text-sm disabled:opacity-50"
-                  >
-                    {uploading ? '上传中...' : '上传文件'}
-                  </button>
-                </div>
+                <button
+                  onClick={() => navigate(`/record?personId=${selectedPerson.id}`)}
+                  className="w-full py-2 bg-[#5C3D2E] text-white rounded-lg hover:bg-[#4A3125]"
+                >
+                  开始录入
+                </button>
                 <input
                   ref={fileInputRef}
                   type="file"
