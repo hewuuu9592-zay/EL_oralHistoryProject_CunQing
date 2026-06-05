@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getPerson, startInterview, submitInterviewAnswer, getInterviewRoundStatus, getNextQuestion, completeInterview, abandonInterview, getPersonInterviews } from '../api';
+import { getPerson, startInterview, submitInterviewAnswer, getInterviewRoundStatus, getNextQuestion, completeInterview, abandonInterview, getPersonInterviews, getThemes } from '../api';
+import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
 // 录音辅助函数
 
@@ -10,6 +11,10 @@ const InterviewPage = () => {
   const personId = searchParams.get('personId');
 
   const [stage, setStage] = useState('loading'); // loading | ready | interviewing | completing | done
+  const [selectedThemes, setSelectedThemes] = useState([]);  // 选中的主题
+
+  // 使用 ThemeContext
+  const { themes, getThemeStyle } = useTheme();
   const [person, setPerson] = useState(null);
   const [session, setSession] = useState(null);
   const [currentRound, setCurrentRound] = useState(null);
@@ -65,7 +70,7 @@ const InterviewPage = () => {
   // 开始采访
   const handleStart = async () => {
     try {
-      const res = await startInterview(personId);
+      const res = await startInterview(personId, selectedThemes);
       const data = res.data;
       setSession({
         id: data.session_id,
@@ -82,6 +87,15 @@ const InterviewPage = () => {
       console.error('开始采访失败:', e);
       alert('开始失败，请重试');
     }
+  };
+
+  // 切换主题选择
+  const toggleTheme = (themeName) => {
+    setSelectedThemes(prev =>
+      prev.includes(themeName)
+        ? prev.filter(t => t !== themeName)
+        : [...prev, themeName]
+    );
   };
 
   // 开始录音
@@ -306,28 +320,60 @@ const InterviewPage = () => {
           </button>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center p-6">
-          <div className="w-24 h-24 rounded-full bg-[#C9A84C] flex items-center justify-center text-white text-4xl mb-4">
+        <div className="flex-1 flex flex-col items-center p-6 overflow-auto">
+          {/* 人物信息 */}
+          <div className="w-20 h-20 rounded-full bg-[#C9A84C] flex items-center justify-center text-white text-3xl mb-4">
             {person?.avatar_url
               ? <img src={person.avatar_url} className="w-full h-full object-cover rounded-full" />
               : person?.name?.charAt(0)
             }
           </div>
-          <h1 className="text-2xl font-bold text-[#4A3728] mb-2">{person?.name}</h1>
-          <p className="text-[#8B7355] mb-8">想和您聊聊天</p>
+          <h1 className="text-xl font-bold text-[#4A3728] mb-1">{person?.name}</h1>
+          <p className="text-[#8B7355] text-sm mb-6">今天我们来聊聊TA的故事</p>
 
-          <div className="bg-white rounded-xl p-6 shadow-sm max-w-sm w-full mb-8">
-            <p className="text-center text-[#4A3728]">
-              今天想聊聊<span className="font-bold text-[#C9A84C]">{session?.topic_hint || '您的人生故事'}</span>
-            </p>
-            <p className="text-center text-gray-500 text-sm mt-2">
-              我们会进行几轮对话，您只需要放松地讲述就可以了
-            </p>
+          {/* 主题选择 */}
+          <div className="w-full max-w-sm mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-medium text-[#4A3728]">今天想聊什么？</h2>
+              <button
+                onClick={() => setSelectedThemes([])}
+                className="text-xs text-gray-400"
+              >
+                全部都可以
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(themes || []).map((theme) => {
+                const style = getThemeStyle(themes, theme.name);
+                const isSelected = selectedThemes.includes(theme.name);
+                return (
+                  <button
+                    key={theme.name}
+                    onClick={() => toggleTheme(theme.name)}
+                    className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
+                      isSelected
+                        ? 'ring-2 ring-[#C9A84C]'
+                        : ''
+                    }`}
+                    style={{
+                      backgroundColor: isSelected ? '#C9A84C' : style.bg,
+                      color: isSelected ? 'white' : style.text
+                    }}
+                  >
+                    {style.emoji} {theme.name}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedThemes.length === 0 && (
+              <p className="text-xs text-gray-400 mt-2">不限定主题，让AI自由发挥</p>
+            )}
           </div>
 
+          {/* 开始按钮 */}
           <button
             onClick={handleStart}
-            className="w-48 h-48 rounded-full bg-[#4A3728] text-white text-xl font-bold shadow-lg hover:bg-[#5A4738] transition-all"
+            className="w-40 h-40 rounded-full bg-[#4A3728] text-white text-lg font-bold shadow-lg hover:bg-[#5A4738] transition-all"
           >
             开始采访
           </button>

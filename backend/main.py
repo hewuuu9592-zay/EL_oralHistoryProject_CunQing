@@ -640,12 +640,16 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
 # ============= Interview APIs =============
 
 @app.post("/persons/{person_id}/interviews/start", response_model=InterviewStartResponse)
-def start_interview(person_id: str, db: Session = Depends(get_db)):
+def start_interview(person_id: str, request: dict = {}, db: Session = Depends(get_db)):
     """开始一次采访会话"""
     # 检查人物是否存在
     person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if not person:
         raise HTTPException(status_code=404, detail="人物不存在")
+
+    # 获取用户偏好的主题
+    preferred_themes = request.get("preferred_themes", [])
+    preferred_str = "、".join(preferred_themes) if preferred_themes else ""
 
     # 分析该人物已有故事的空白主题
     sp_records = db.query(models.StoryPerson).filter(
@@ -662,10 +666,17 @@ def start_interview(person_id: str, db: Session = Depends(get_db)):
         existing_themes = [s.theme for s in stories if s.theme]
         missing_themes = [t for t in THEMES if t not in existing_themes]
 
-    # 确定本次采访的主题方向
-    suggested_theme = missing_themes[0] if missing_themes else (
-        random.choice(existing_themes) if existing_themes else random.choice(THEMES)
-    )
+    # 确定本次采访的主题方向：优先从用户选择的主题中选
+    if preferred_themes:
+        # 从用户选择的主题中找一个缺失的，或随机选一个
+        candidate_themes = [t for t in preferred_themes if t in missing_themes] or preferred_themes
+        suggested_theme = candidate_themes[0]
+    elif missing_themes:
+        suggested_theme = missing_themes[0]
+    elif existing_themes:
+        suggested_theme = random.choice(existing_themes)
+    else:
+        suggested_theme = random.choice(THEMES)
     topic_hint = suggested_theme
 
     # 生成第一个引导问题（结合历史语境）
@@ -686,6 +697,9 @@ def start_interview(person_id: str, db: Session = Depends(get_db)):
     existing_str = "、".join(existing_themes) if existing_themes else "暂无"
     pronoun = "她" if person.gender == "女" else "他"
 
+    # 生成 prompt 时加入用户偏好主题
+    theme_constraint = f"今天用户希望聊的主题是：{preferred_str}，请优先围绕这些主题生成引导问题。" if preferred_str else ""
+
     if api_key:
         try:
             client = OpenAI(
@@ -693,7 +707,7 @@ def start_interview(person_id: str, db: Session = Depends(get_db)):
                 base_url="https://ark.cn-beijing.volces.com/api/v3",
             )
 
-            prompt = f"""你是一位温柔的家族记忆采访者。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：{events_str}。{pronoun}已经讲述了这些主题的故事：{existing_str}。请为'{suggested_theme}'这个主题，生成第一个温暖具体的引导问题。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身。"""
+            prompt = f"""你是一位温柔的家族记忆采访者。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：{events_str}。{pronoun}已经讲述了这些主题的故事：{existing_str}。{theme_constraint}请为'{suggested_theme}'这个主题，生成第一个温暖具体的引导问题。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身。"""
 
             response = client.chat.completions.create(
                 model="ep-20260521233914-gllp4",

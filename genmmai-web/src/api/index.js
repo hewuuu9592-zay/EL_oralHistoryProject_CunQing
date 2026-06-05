@@ -87,7 +87,10 @@ export const createEventMemory = (eventId, data) => api.post(`/historical-events
 export const deleteEventMemory = (eventId, memoryId) => api.delete(`/historical-events/${eventId}/memories/${memoryId}`);
 
 // 采访 API
-export const startInterview = (personId) => api.post(`/persons/${personId}/interviews/start`);
+export const startInterview = (personId, preferredThemes) => {
+  const data = preferredThemes?.length > 0 ? { preferred_themes: preferredThemes } : {};
+  return api.post(`/persons/${personId}/interviews/start`, data);
+};
 export const submitInterviewAnswer = (sessionId, formData) => api.post(`/interviews/${sessionId}/answer`, formData, {
   headers: { 'Content-Type': 'multipart/form-data' }
 });

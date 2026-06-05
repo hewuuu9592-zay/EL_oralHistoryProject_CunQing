@@ -204,16 +204,9 @@ const FamilyTree = () => {
     }
   }
 
-  // 直接开始采访或继续采访
-  const handleInterview = async (person) => {
-    const activeSession = activeSessions[person.id]
-    if (activeSession) {
-      // 继续现有采访
-      navigate(`/interview?personId=${person.id}&continue=${activeSession.session_id}`)
-    } else {
-      // 开始新采访
-      navigate(`/interview?personId=${person.id}`)
-    }
+  // 开始采访
+  const handleInterview = (person) => {
+    navigate(`/interview?personId=${person.id}`)
   }
 
   useEffect(() => {
@@ -337,31 +330,31 @@ const FamilyTree = () => {
               {/* 成员头像列表 */}
               <div className="flex gap-4 overflow-x-auto pb-2">
                 {persons.map((p) => {
-                  const activeSession = activeSessions[p.id]
-                  return (
-                    <div
-                      key={p.id}
-                      onClick={() => handleInterview(p)}
-                      className="flex flex-col items-center flex-shrink-0 cursor-pointer"
-                    >
-                      <div className="relative">
-                        <div className="w-14 h-14 rounded-full bg-[#D4A574] flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
-                          {p.avatar_url ? (
-                            <img src={p.avatar_url} className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-white text-lg font-medium">{p.name?.charAt(0)}</span>
-                          )}
+                  const isActive = activeSession && activeSession.status === 'active'
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => isActive ? handleInterview(p) : navigate(`/interview?personId=${p.id}`)}
+                          className="flex flex-col items-center flex-shrink-0 cursor-pointer"
+                        >
+                          <div className="relative">
+                            <div className="w-14 h-14 rounded-full bg-[#D4A574] flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
+                              {p.avatar_url ? (
+                                <img src={p.avatar_url} className="w-full h-full object-cover" />
+                              ) : (
+                                <span className="text-white text-lg font-medium">{p.name?.charAt(0)}</span>
+                              )}
+                            </div>
+                            {/* 未回答提示点 */}
+                            {!isActive && (
+                              <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-400 rounded-full" />
+                            )}
+                          </div>
+                          <span className="text-xs text-[#4A3728] mt-1 truncate max-w-16">
+                            {isActive ? '继续采访' : p.name}
+                          </span>
                         </div>
-                        {/* 未回答提示点 */}
-                        {!activeSession && (
-                          <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-400 rounded-full" />
-                        )}
-                      </div>
-                      <span className="text-xs text-[#4A3728] mt-1 truncate max-w-16">
-                        {activeSession ? '继续采访' : p.name}
-                      </span>
-                    </div>
-                  )
+                      )
                 })}
               </div>
             </div>
