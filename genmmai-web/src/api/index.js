@@ -92,7 +92,11 @@ export const submitInterviewAnswer = (sessionId, formData) => api.post(`/intervi
   headers: { 'Content-Type': 'multipart/form-data' }
 });
 export const getInterviewRoundStatus = (sessionId, roundId) => api.get(`/interviews/${sessionId}/rounds/${roundId}/status`);
-export const getNextQuestion = (sessionId, roundId) => api.post(`/interviews/${sessionId}/next-question`, { round_id: roundId });
+export const getNextQuestion = (sessionId, roundId) => {
+  // roundId 为 null 或 undefined 时不传该字段
+  const data = roundId ? { round_id: roundId } : {};
+  return api.post(`/interviews/${sessionId}/next-question`, data);
+};
 export const completeInterview = (sessionId) => api.post(`/interviews/${sessionId}/complete`);
 export const abandonInterview = (sessionId) => api.post(`/interviews/${sessionId}/abandon`);
 export const getPersonInterviews = (personId) => api.get(`/persons/${personId}/interviews`);

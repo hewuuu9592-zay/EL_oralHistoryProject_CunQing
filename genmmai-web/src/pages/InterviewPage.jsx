@@ -199,7 +199,7 @@ const InterviewPage = () => {
     }
 
     try {
-      const res = await getNextQuestion(session.id, roundId || '');
+      const res = await getNextQuestion(session.id, roundId);
       const data = res.data;
 
       const newRound = {
