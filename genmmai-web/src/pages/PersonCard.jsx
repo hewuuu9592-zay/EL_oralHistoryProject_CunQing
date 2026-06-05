@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   getPerson, getPersonStories, getPersonStoryThemes, getPersonRelations,
   updatePerson, getRelationships, deleteRelationship, createRelationship,
-  getPersons   // 这个是获取所有人列表的，需要用到
+  getPersons, getPersonInterviews
 } from '../api';
 import MigrationMapTab from './MigrationMapTab';
 // ========== 主题颜色映射 ==========
@@ -493,6 +493,9 @@ const PersonCard = () => {
   const [allPersons, setAllPersons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('timeline');
+  const [interviews, setInterviews] = useState([]);
+  const [loadingInterviews, setLoadingInterviews] = useState(false);
+  const [expandedInterview, setExpandedInterview] = useState(null);
   const [selectedRelated, setSelectedRelated] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [allRelationships, setAllRelationships] = useState([]); // 全量关系
@@ -534,6 +537,23 @@ const PersonCard = () => {
     };
     fetchData();
   }, [id]);
+
+  // Fetch interviews when tab changes to interviews
+  useEffect(() => {
+    if (activeTab === 'interviews') {
+      setLoadingInterviews(true);
+      getPersonInterviews(id)
+        .then(res => {
+          setInterviews(res.data || []);
+        })
+        .catch(err => {
+          console.error('获取采访记录失败:', err);
+        })
+        .finally(() => {
+          setLoadingInterviews(false);
+        });
+    }
+  }, [activeTab, id]);
 
   const handleEdit = () => {
     if (!person) return;
@@ -714,6 +734,7 @@ const PersonCard = () => {
             { key: 'timeline', label: '个人时间轴' },
             { key: 'stories', label: '主题故事集' },
             { key: 'migrations', label: '迁徙地图' },
+            { key: 'interviews', label: '采访记录' },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -751,6 +772,120 @@ const PersonCard = () => {
           </div>
           <div style={{ display: activeTab === 'migrations' ? 'block' : 'none' }}>
             <MigrationMapTab personId={id} />
+          </div>
+          <div style={{ display: activeTab === 'interviews' ? 'block' : 'none' }}>
+            {loadingInterviews ? (
+              <div className="p-4 text-center text-gray-500">加载中...</div>
+            ) : interviews.length === 0 ? (
+              <div className="p-8 text-center">
+                <div className="text-gray-500 mb-4">暂无采访记录</div>
+                <button
+                  onClick={() => navigate(`/interview/${id}`)}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                >
+                  开始第一次采访
+                </button>
+              </div>
+            ) : (
+              <div className="p-4">
+                {/* 统计 */}
+                <div className="flex gap-4 mb-4">
+                  <div className="bg-blue-50 p-3 rounded-lg flex-1 text-center">
+                    <div className="text-2xl font-bold text-blue-600">{interviews.length}</div>
+                    <div className="text-sm text-gray-600">采访次数</div>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-lg flex-1 text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {interviews.reduce((sum, i) => sum + (i.rounds?.length || 0), 0)}
+                    </div>
+                    <div className="text-sm text-gray-600">总轮次</div>
+                  </div>
+                  <div className="bg-purple-50 p-3 rounded-lg flex-1 text-center">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {interviews.reduce((sum, i) => sum + (i.stories_count || 0), 0)}
+                    </div>
+                    <div className="text-sm text-gray-600">生成故事</div>
+                  </div>
+                </div>
+
+                {/* 采访列表 */}
+                <div className="space-y-3">
+                  {interviews.map((interview) => (
+                    <div key={interview.id} className="border rounded-lg overflow-hidden">
+                      <div
+                        className="p-3 bg-gray-50 flex items-center justify-between cursor-pointer"
+                        onClick={() => setExpandedInterview(
+                          expandedInterview === interview.id ? null : interview.id
+                        )}
+                      >
+                        <div>
+                          <div className="font-medium">
+                            {new Date(interview.created_at).toLocaleDateString('zh-CN')}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {interview.rounds?.length || 0} 轮 · {interview.stories_count || 0} 故事
+                            {interview.status === 'done' ? ' · 已完成' : interview.status === 'abandoned' ? ' · 已放弃' : ''}
+                          </div>
+                        </div>
+                        <svg
+                          className={`w-5 h-5 transform transition-transform ${
+                            expandedInterview === interview.id ? 'rotate-180' : ''
+                          }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                      {expandedInterview === interview.id && (
+                        <div className="p-3 border-t">
+                          {interview.rounds?.length > 0 ? (
+                            <div className="space-y-3">
+                              {interview.rounds.map((round, idx) => (
+                                <div key={round.id} className="border rounded-lg p-3">
+                                  <div className="font-medium text-sm text-gray-600 mb-2">
+                                    第 {idx + 1} 轮
+                                  </div>
+                                  <div className="space-y-2">
+                                    <div>
+                                      <div className="text-xs text-gray-500">问题</div>
+                                      <div className="text-sm">{round.question}</div>
+                                    </div>
+                                    {round.answer && (
+                                      <div>
+                                        <div className="text-xs text-gray-500">回答</div>
+                                        <div className="text-sm text-gray-700">{round.answer}</div>
+                                      </div>
+                                    )}
+                                    {round.story_id && (
+                                      <div>
+                                        <div className="text-xs text-gray-500">生成故事</div>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            navigate(`/story/${round.story_id}`);
+                                          }}
+                                          className="text-sm text-blue-500 hover:underline"
+                                        >
+                                          查看故事
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-gray-500 text-sm">无轮次数据</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
       </div>
 

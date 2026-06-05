@@ -347,7 +347,7 @@ const FamilyTree = () => {
                               )}
                             </div>
                             {/* 未回答提示点 */}
-                            {!isActive && (
+                            {isActive && (
                               <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-400 rounded-full" />
                             )}
                           </div>
