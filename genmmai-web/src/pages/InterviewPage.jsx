@@ -119,9 +119,12 @@ const InterviewPage = () => {
   // 停止录音
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
+      // 先停止计时器
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+      // 再停止录音，确保 timer 已停
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      clearInterval(timerRef.current);
     }
   };
 
@@ -383,45 +386,53 @@ const InterviewPage = () => {
               </div>
             </div>
 
-            {/* 录音按钮区域 */}
+            {/* 统一录音区域 */}
             {!currentRound && !transcribing && (
-              <div className="flex flex-col items-center py-4">
-                {!audioUrl ? (
+              <div className="flex flex-col items-center py-6">
+                {/* 待录音状态 */}
+                {!audioUrl && !isRecording && (
                   <button
                     onClick={startRecording}
-                    className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
-                      isRecording ? 'bg-red-500 animate-pulse' : 'bg-[#C9A84C]'
-                    }`}
+                    className="w-20 h-20 rounded-full bg-[#C9A84C] flex items-center justify-center hover:bg-[#D4B85C] transition-all"
                   >
-                    <div className={`w-16 h-16 rounded-full ${isRecording ? 'bg-red-600' : 'bg-[#D4B85C]'}`} />
+                    <div className="w-16 h-16 rounded-full bg-[#D4B85C]" />
                   </button>
-                ) : (
-                  <div className="flex gap-3">
-                    <button onClick={handleReRecord} className="px-4 py-2 border border-gray-300 rounded">
-                      重新录制
-                    </button>
+                )}
+
+                {/* 录音中 */}
+                {isRecording && (
+                  <>
+                    <div className="text-red-500 font-bold mb-2">{formatTime(recordingTime)}</div>
                     <button
-                      onClick={handleSubmit}
-                      disabled={submitting}
-                      className="px-4 py-2 bg-[#4A3728] text-white rounded disabled:opacity-50"
+                      onClick={stopRecording}
+                      className="w-20 h-20 rounded-full bg-red-500 flex items-center justify-center"
                     >
-                      {submitting ? '提交中...' : '提交回答'}
+                      <div className="w-16 h-16 rounded-full bg-red-600" />
                     </button>
+                  </>
+                )}
+
+                {/* 已录音 */}
+                {audioUrl && !isRecording && (
+                  <div className="space-y-3 w-full max-w-xs">
+                    <audio src={audioUrl} controls className="w-full" />
+                    <div className="flex gap-3 justify-center">
+                      <button
+                        onClick={handleReRecord}
+                        className="px-4 py-2 border border-gray-300 rounded"
+                      >
+                        重新录制
+                      </button>
+                      <button
+                        onClick={handleSubmit}
+                        disabled={submitting}
+                        className="px-4 py-2 bg-[#4A3728] text-white rounded disabled:opacity-50"
+                      >
+                        {submitting ? '提交中...' : '提交回答'}
+                      </button>
+                    </div>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* 录音中 */}
-            {isRecording && (
-              <div className="flex flex-col items-center py-4">
-                <div className="text-red-500 font-bold mb-2">{formatTime(recordingTime)}</div>
-                <button
-                  onClick={stopRecording}
-                  className="w-20 h-20 rounded-full bg-red-500 flex items-center justify-center"
-                >
-                  <div className="w-16 h-16 rounded-full bg-red-600" />
-                </button>
               </div>
             )}
 
