@@ -850,19 +850,19 @@ def get_next_question(session_id: str, request: dict, db: Session = Depends(get_
     if session.status != "active":
         raise HTTPException(status_code=400, detail="采访会话已结束")
 
-    # 获取上一轮的文字
-    last_round = db.query(models.InterviewRound).filter(
-        models.InterviewRound.id == round_id
-    ).first()
-    if not last_round or not last_round.transcript:
-        raise HTTPException(status_code=400, detail="上一轮转写未完成")
+    # 获取上一轮的记录（不一定有 transcript）
+    last_round = None
+    latest_transcript = None
+    if round_id:
+        last_round = db.query(models.InterviewRound).filter(
+            models.InterviewRound.id == round_id
+        ).first()
+        if last_round:
+            latest_transcript = last_round.transcript
 
-    latest_transcript = last_round.transcript
-
-    # 获取本会话所有历史轮次
+    # 获取本会话所有历史轮次（包括没有 transcript 的）
     all_rounds = db.query(models.InterviewRound).filter(
         models.InterviewRound.session_id == session_id,
-        models.InterviewRound.transcript.isnot(None)
     ).order_by(models.InterviewRound.round_index.asc()).all()
 
     # 构建对话历史
@@ -872,6 +872,8 @@ def get_next_question(session_id: str, request: dict, db: Session = Depends(get_
             history_parts.append(f"问：{r.question}")
         if r.transcript:
             history_parts.append(f"答：{r.transcript[:100]}...")
+        else:
+            history_parts.append(f"答：（未录音，跳过）")
     history = "\n".join(history_parts)
 
     current_index = session.round_count
