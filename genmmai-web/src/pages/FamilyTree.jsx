@@ -141,7 +141,8 @@ const FamilyTree = () => {
   const [loading, setLoading] = useState(true)
   const [activeSessions, setActiveSessions] = useState({}); // personId -> session info
   const [totalStories, setTotalStories] = useState(0)
-  const [activeTab, setActiveTab] = useState('tree') // tree | history | map
+  const [activeTab, setActiveTab] = useState('today') // today | tree | history | map
+  const [sidebarExpanded, setSidebarExpanded] = useState(true)
 
   // 从 URL 参数切换到历史时间轴标签并高亮事件
   useEffect(() => {
@@ -313,93 +314,131 @@ const FamilyTree = () => {
     }
   }
 
-  return (
-    <div className="relative min-h-screen bg-[#FAF7F2]">
-      {/* 今日采访入口 */}
+  // 今日录入组件
+  const TodayInterview = () => (
+    <div className="p-4">
       {persons.length > 0 && (
-        <div className="bg-[#FFFDF5] border-b border-[#E5DED3] px-4 py-4">
-          <div className="max-w-md mx-auto">
-            <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-[#C9A84C]">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-base font-medium text-[#4A3728]">今天想聊聊谁的故事？</h2>
-                <span className="text-xs text-gray-400">
-                  已记录{totalStories}个故事 · {persons.length}位成员
-                </span>
-              </div>
+        <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-[#C9A84C]">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-medium text-[#4A3728]">今天想聊聊谁的故事？</h2>
+            <span className="text-xs text-gray-400">
+              已记录{totalStories}个故事 · {persons.length}位成员
+            </span>
+          </div>
 
-              {/* 成员头像列表 */}
-              <div className="flex gap-4 overflow-x-auto pb-2">
-                {persons.map((p) => {
-                  const active = activeSessions[p.id];
-                  const isActive = active && active.status === 'active';
-                      return (
-                        <div
-                          key={p.id}
-                          onClick={() => isActive ? handleInterview(p) : navigate(`/interview?personId=${p.id}`)}
-                          className="flex flex-col items-center flex-shrink-0 cursor-pointer"
-                        >
-                          <div className="relative">
-                            <div className="w-14 h-14 rounded-full bg-[#D4A574] flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
-                              {p.avatar_url ? (
-                                <img src={p.avatar_url} className="w-full h-full object-cover" />
-                              ) : (
-                                <span className="text-white text-lg font-medium">{p.name?.charAt(0)}</span>
-                              )}
-                            </div>
-                            {/* 未回答提示点 */}
-                            {isActive && (
-                              <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-400 rounded-full" />
-                            )}
-                          </div>
-                          <span className="text-xs text-[#4A3728] mt-1 truncate max-w-16">
-                            {p.name}
-                          </span>
-                        </div>
-                      )
-                })}
-              </div>
-            </div>
+          {/* 成员头像列表 */}
+          <div className="flex gap-4 overflow-x-auto pb-2">
+            {persons.map((p) => {
+              const active = activeSessions[p.id];
+              const isActive = active && active.status === 'active';
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => isActive ? handleInterview(p) : navigate(`/interview?personId=${p.id}`)}
+                  className="flex flex-col items-center flex-shrink-0 cursor-pointer"
+                >
+                  <div className="relative">
+                    <div className="w-14 h-14 rounded-full bg-[#D4A574] flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
+                      {p.avatar_url ? (
+                        <img src={p.avatar_url} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-white text-lg font-medium">{p.name?.charAt(0)}</span>
+                      )}
+                    </div>
+                    {isActive && (
+                      <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-400 rounded-full" />
+                    )}
+                  </div>
+                  <span className="text-xs text-[#4A3728] mt-1 truncate max-w-16">
+                    {p.name}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
+    </div>
+  )
 
-      {/* 左上角 Logo */}
-      <div className="absolute top-6 left-6 z-10 flex items-center gap-4">
-        <h1 className="text-4xl font-serif text-[#5C3D2E]">根脉</h1>
-        <button
-          onClick={() => navigate('/settings')}
-          className="text-2xl text-[#8B7355] hover:text-[#5C3D2E]"
-          title="设置"
-        >
-          ⚙️
-        </button>
-      </div>
+  // 侧边栏导航项
+  const navItems = [
+    { key: 'today', label: '今日录入', icon: '🎙️' },
+    { key: 'tree', label: '家族树', icon: '🌳' },
+    { key: 'history', label: '家族变迁史', icon: '📜' },
+    { key: 'map', label: '家族迁徙地图', icon: '🗺️' },
+  ]
 
-      {/* Tab 导航 */}
-      <div className="bg-white border-b border-[#E5DED3] pt-16">
-        <div className="max-w-md mx-auto flex">
-          {[
-            { key: 'tree', label: '家族树' },
-            { key: 'history', label: '家族变迁史' },
-            { key: 'map', label: '家族迁徙地图' },
-          ].map((tab) => (
+  return (
+    <div className="flex min-h-screen bg-[#FAF7F2]">
+      {/* 侧边栏 */}
+      <div
+        className={`flex flex-col bg-[#FAF7F2] border-r border-[#E5DED3] transition-all duration-300 ${
+          sidebarExpanded ? 'w-[180px]' : 'w-12'
+        }`}
+      >
+        {/* Logo */}
+        <div className="h-16 flex items-center justify-center border-b border-[#E5DED3]">
+          {sidebarExpanded ? (
+            <h1 className="text-2xl font-serif text-[#5C3D2E]">根脉</h1>
+          ) : (
+            <h1 className="text-xl font-serif text-[#5C3D2E]">根</h1>
+          )}
+        </div>
+
+        {/* 导航项 */}
+        <div className="flex-1 py-4">
+          {navItems.map((item) => (
             <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 py-3 text-sm relative ${
-                activeTab === tab.key
-                  ? 'text-[#4A3728] font-medium'
-                  : 'text-gray-400'
+              key={item.key}
+              onClick={() => setActiveTab(item.key)}
+              className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${
+                activeTab === item.key
+                  ? 'bg-[#5C3D2E] text-white'
+                  : 'text-[#4A3728] hover:bg-[#E8DFD0]'
               }`}
             >
-              {tab.label}
-              {activeTab === tab.key && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#4A3728]" />
-              )}
+              <span className="text-lg">{item.icon}</span>
+              {sidebarExpanded && <span className="text-sm">{item.label}</span>}
             </button>
           ))}
         </div>
+
+        {/* 收起/展开按钮 */}
+        <button
+          onClick={() => setSidebarExpanded(!sidebarExpanded)}
+          className="h-12 border-t border-[#E5DED3] flex items-center justify-center text-[#5C3D2E] hover:bg-[#E8DFD0]"
+        >
+          {sidebarExpanded ? '«' : '»'}
+        </button>
       </div>
+
+      {/* 主内容区 */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* 顶部栏 */}
+        <div className="h-16 bg-white border-b border-[#E5DED3] flex items-center justify-between px-6">
+          <div className="text-[#5C3D2E] font-medium">
+            {navItems.find(n => n.key === activeTab)?.label}
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-500">
+              {persons.length}位成员 · {totalStories}个故事
+            </span>
+            <button
+              onClick={() => navigate('/settings')}
+              className="text-xl text-[#8B7355] hover:text-[#5C3D2E]"
+            >
+              ⚙️
+            </button>
+          </div>
+        </div>
+
+        {/* 内容区域 */}
+        <div className="flex-1 overflow-auto">
+          {/* 今日录入 */}
+          <div style={{ display: activeTab === 'today' ? 'block' : 'none' }}>
+            <TodayInterview />
+          </div>
 
       {/* 内容区域 - 仅在家族树 tab 显示 */}
       <div className="pt-0 pb-20" style={{ display: activeTab === 'tree' ? 'block' : 'none' }}>
@@ -445,47 +484,64 @@ const FamilyTree = () => {
       )}
       </div>
 
-      {/* 家族变迁史 */}
-      <div style={{ display: activeTab === 'history' ? 'block' : 'none' }}>
-        <FamilyTimeline searchParams={searchParams} />
-      </div>
+      {/* 家族树 */}
+          <div style={{ display: activeTab === 'tree' ? 'block' : 'none' }}>
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-[#5C3D2E]">加载中...</div>
+              </div>
+            ) : persons.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full">
+                <p className="text-[#5C3D2E] text-lg mb-4">从第一位家族成员开始</p>
+                <button
+                  type="button"
+                  onClick={(e) => handleAddPerson(e)}
+                  className="px-6 py-2 bg-[#5C3D2E] text-white rounded-full hover:bg-[#4A3125]"
+                >
+                  添加成员
+                </button>
+              </div>
+            ) : (
+              <div className="family-tree-container p-4 overflow-auto">
+                <div className="family-tree">
+                  <ul>
+                    {tree.map(node => (
+                      <FamilyNode
+                        key={node.bloodId}
+                        node={node}
+                        personsMap={personsMap}
+                        onEdit={handleEditPerson}
+                        onDelete={handleDeletePerson}
+                        navigate={navigate}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
 
-      {/* 家族迁徙地图 */}
-      <div style={{ display: activeTab === 'map' ? 'block' : 'none' }}>
-        <FamilyMigrationMap />
-      </div>
+          {/* 家族变迁史 */}
+          <div style={{ display: activeTab === 'history' ? 'block' : 'none' }}>
+            <FamilyTimeline searchParams={searchParams} />
+          </div>
 
-      {/* 右上角成员数 - 仅在家族树 tab 显示 */}
-      {activeTab === 'tree' && (
-        <div className="absolute top-6 right-6 z-10 text-[#5C3D2E]">
-          成员数：{persons.length}人
+          {/* 家族迁徙地图 */}
+          <div style={{ display: activeTab === 'map' ? 'block' : 'none' }}>
+            <FamilyMigrationMap />
+          </div>
         </div>
-      )}
 
-      {/* 右下角添加按钮 - 仅在家族树 tab 且有成员时显示 */}
-      {activeTab === 'tree' && persons.length > 0 && (
-        <button
-          type="button"
-          onClick={(e) => handleAddPerson(e)}
-          style={{
-            position: 'fixed',
-            bottom: '24px',
-            right: '24px',
-            width: '48px',
-            height: '48px',
-            borderRadius: '50%',
-            backgroundColor: '#5C3D2E',
-            color: 'white',
-            fontSize: '24px',
-            border: 'none',
-            cursor: 'pointer',
-            zIndex: 9999,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          }}
-        >
-          +
-        </button>
-      )}
+        {/* 右下角添加按钮 - 仅在家族树 tab 且有成员时显示 */}
+        {activeTab === 'tree' && persons.length > 0 && (
+          <button
+            type="button"
+            onClick={(e) => handleAddPerson(e)}
+            className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-[#5C3D2E] text-white text-2xl hover:bg-[#4A3125] shadow-lg z-50"
+          >
+            +
+          </button>
+        )}
 
       {/* 添加/编辑成员弹窗 */}
       {showAddModal && (
@@ -639,6 +695,7 @@ const FamilyTree = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }
