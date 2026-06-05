@@ -508,9 +508,37 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
         # 没有任何故事，随机选一个
         suggested_theme = random.choice(THEMES)
 
-    existing_str = "、".join(existing_themes) if existing_themes else "暂无"
+    existing_str = "、" .join(existing_themes) if existing_themes else "暂无"
 
-    # 3. 调用豆包模型生成引导问题
+    # 3. 查询该人物生命跨度内的重大历史事件
+    birth_year = person.birth_year or 1950
+    current_year = datetime.now().year
+
+    # 先查 importance=3 的
+    major_events = db.query(models.HistoricalEvent).filter(
+        models.HistoricalEvent.year >= birth_year,
+        models.HistoricalEvent.year <= current_year,
+        models.HistoricalEvent.importance == 3
+    ).order_by(models.HistoricalEvent.year.asc()).all()
+
+    # 如果太少，补充一些 importance=2 的
+    if len(major_events) < 3:
+        more_events = db.query(models.HistoricalEvent).filter(
+            models.HistoricalEvent.year >= birth_year,
+            models.HistoricalEvent.year <= current_year,
+            models.HistoricalEvent.importance >= 2
+        ).order_by(models.HistoricalEvent.year.asc()).all()
+
+        # 合并去重
+        existing_ids = {e.id for e in major_events}
+        for e in more_events:
+            if e.id not in existing_ids and len(major_events) < 8:
+                major_events.append(e)
+
+    events_list = [f"{e.year}年{e.title}" for e in major_events]
+    events_str = "、".join(events_list) if events_list else "暂无重大历史事件"
+
+    # 4. 调用豆包模型生成引导问题
     api_key = os.getenv("ARK_API_KEY", "")
     question = None
 
@@ -529,7 +557,7 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
                 base_url="https://ark.cn-beijing.volces.com/api/v3",
             )
 
-            prompt = f"""你是一个温柔的家族记忆整理师。这位长辈名叫{person.name}，{pronoun}，生于{person.birth_year or '未知'}年。{pronoun}已经讲述了这些方面的故事：{existing_str}。请为'{suggested_theme}'这个主题，生成一个温暖具体的引导问题。要求：口语化，像晚辈在问长辈，不超过30字，直接返回问题本身，不要任何前缀。"""
+            prompt = f"""你是一个温暖的家族记忆整理师。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：。{pronoun}已经讲述了这些主题的故事：{existing_str}。请为'{suggested_theme}'这个主题，生成一个温暖具体的引导问题。可以结合{pronoun}亲历的历史背景，例如可以问'{pronoun}经历某事件时在做什么'或'某事件后{pronoun}的生活发生了什么变化'。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身，不要任何前缀。"""
 
             response = client.chat.completions.create(
                 model="ep-20260521233914-gllp4",
@@ -547,7 +575,7 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
             print(f"豆包 API 调用失败: {str(e)}")
             question = None
 
-    # 4. 回退逻辑
+    # 5. 回退逻辑
     if not question:
         fallback_questions = {
             "家乡记忆": f"{person.name}小时候住在哪儿，那边有什么好玩的事？",
