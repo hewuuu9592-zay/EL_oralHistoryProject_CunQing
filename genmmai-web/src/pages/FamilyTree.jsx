@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deletePersonForce, deleteRelationship } from '../api'
 import FamilyTimeline from './FamilyTimeline'
 import FamilyMigrationMap from './FamilyMigrationMap'
@@ -135,10 +135,19 @@ const buildTree = (persons, relationships) => {
 
 const FamilyTree = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [persons, setPersons] = useState([])
   const [relationships, setRelationships] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('tree') // tree | history | map
+
+  // 从 URL 参数切换到历史时间轴标签并高亮事件
+  useEffect(() => {
+    const eventId = searchParams.get('highlight_event')
+    if (eventId) {
+      setActiveTab('history')
+    }
+  }, [searchParams])
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingPerson, setEditingPerson] = useState(null)
   const [newPerson, setNewPerson] = useState({
@@ -362,7 +371,7 @@ const FamilyTree = () => {
 
       {/* 家族变迁史 */}
       <div style={{ display: activeTab === 'history' ? 'block' : 'none' }}>
-        <FamilyTimeline />
+        <FamilyTimeline searchParams={searchParams} />
       </div>
 
       {/* 家族迁徙地图 */}

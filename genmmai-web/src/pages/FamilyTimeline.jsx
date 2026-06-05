@@ -447,9 +447,11 @@ const TimelineAxis = ({ yearFrom, yearTo }) => {
 };
 
 // 主组件
-const FamilyTimeline = () => {
+const FamilyTimeline = ({ searchParams: externalSearchParams }) => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  // 使用外部传入的 searchParams 或自己的
+  const [localSearchParams] = useSearchParams();
+  const searchParams = externalSearchParams || localSearchParams;
   const [stories, setStories] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
