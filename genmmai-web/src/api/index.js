@@ -86,4 +86,15 @@ export const getEventMemories = (eventId) => api.get(`/historical-events/${event
 export const createEventMemory = (eventId, data) => api.post(`/historical-events/${eventId}/memories`, data);
 export const deleteEventMemory = (eventId, memoryId) => api.delete(`/historical-events/${eventId}/memories/${memoryId}`);
 
+// 采访 API
+export const startInterview = (personId) => api.post(`/persons/${personId}/interviews/start`);
+export const submitInterviewAnswer = (sessionId, formData) => api.post(`/interviews/${sessionId}/answer`, formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+});
+export const getInterviewRoundStatus = (sessionId, roundId) => api.get(`/interviews/${sessionId}/rounds/${roundId}/status`);
+export const getNextQuestion = (sessionId, roundId) => api.post(`/interviews/${sessionId}/next-question`, { round_id: roundId });
+export const completeInterview = (sessionId) => api.post(`/interviews/${sessionId}/complete`);
+export const abandonInterview = (sessionId) => api.post(`/interviews/${sessionId}/abandon`);
+export const getPersonInterviews = (personId) => api.get(`/persons/${personId}/interviews`);
+
 export default api;
