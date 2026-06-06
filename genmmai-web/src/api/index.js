@@ -103,6 +103,7 @@ export const getNextQuestion = (sessionId, roundId) => {
 export const completeInterview = (sessionId) => api.post(`/interviews/${sessionId}/complete`);
 export const abandonInterview = (sessionId) => api.post(`/interviews/${sessionId}/abandon`);
 export const getPersonInterviews = (personId) => api.get(`/persons/${personId}/interviews`);
+export const getSessionRounds = (sessionId) => api.get(`/interviews/${sessionId}/rounds`);
 export const getStoryGenerationStatus = (storyId) => api.get(`/stories/${storyId}/generation-status`);
 
 export default api;

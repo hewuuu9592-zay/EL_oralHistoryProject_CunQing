@@ -147,7 +147,9 @@ class InterviewSessionBrief(BaseModel):
     round_count: int
     status: str
     topic_hint: Optional[str] = None
-    stories_created: int = 0
+    story_id: Optional[str] = None
+    story_title: Optional[str] = None
+    generation_status: Optional[str] = None
 
 
 class StoryCreate(StoryBase):
@@ -865,6 +867,26 @@ def get_round_status(session_id: str, round_id: str, db: Session = Depends(get_d
     )
 
 
+@app.get("/interviews/{session_id}/rounds")
+def get_session_rounds(session_id: str, db: Session = Depends(get_db)):
+    """获取采访会话的所有轮次"""
+    rounds = db.query(models.InterviewRound).filter(
+        models.InterviewRound.session_id == session_id
+    ).order_by(models.InterviewRound.round_index.asc()).all()
+
+    return [
+        {
+            "id": r.id,
+            "round_index": r.round_index,
+            "question": r.question,
+            "transcript": r.transcript,
+            "transcript_status": r.transcript_status,
+            "audio_url": r.audio_url,
+        }
+        for r in rounds
+    ]
+
+
 @app.post("/interviews/{session_id}/next-question", response_model=InterviewNextQuestionResponse)
 def get_next_question(session_id: str, request: dict, db: Session = Depends(get_db)):
     """生成追问"""
@@ -1236,13 +1258,14 @@ def get_person_interviews(person_id: str, db: Session = Depends(get_db)):
 
     result = []
     for session in sessions:
-        # 统计生成的故事数量
-        stories_count = 0
-        if session.status == "completed":
-            # 通过 session_id 查找关联的 story（通过 person_id）
-            stories_count = db.query(models.Story).filter(
-                models.Story.person_ids.contains(session.person_id)
-            ).count()
+        # 获取关联的故事信息
+        story_title = None
+        generation_status = None
+        if session.story_id:
+            story = db.query(models.Story).filter(models.Story.id == session.story_id).first()
+            if story:
+                story_title = story.title
+                generation_status = story.generation_status
 
         result.append(InterviewSessionBrief(
             session_id=session.id,
@@ -1250,7 +1273,9 @@ def get_person_interviews(person_id: str, db: Session = Depends(get_db)):
             round_count=session.round_count,
             status=session.status,
             topic_hint=session.topic_hint,
-            stories_created=stories_count,
+            story_id=session.story_id,
+            story_title=story_title,
+            generation_status=generation_status,
         ))
 
     return result

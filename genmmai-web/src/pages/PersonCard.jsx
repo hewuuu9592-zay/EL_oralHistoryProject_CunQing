@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   getPerson, getPersonStories, getPersonStoryThemes, getPersonRelations,
   updatePerson, getRelationships, deleteRelationship, createRelationship,
-  getPersons, getPersonInterviews
+  getPersons, getPersonInterviews, getSessionRounds
 } from '../api';
 import MigrationMapTab from './MigrationMapTab';
 // ========== 主题颜色映射 ==========
@@ -543,8 +543,20 @@ const PersonCard = () => {
     if (activeTab === 'interviews') {
       setLoadingInterviews(true);
       getPersonInterviews(id)
-        .then(res => {
-          setInterviews(res.data || []);
+        .then(async (res) => {
+          const interviewsData = res.data || [];
+          // 获取每条采访的轮次数据
+          const interviewsWithRounds = await Promise.all(
+            interviewsData.map(async (interview) => {
+              try {
+                const roundsRes = await getSessionRounds(interview.session_id);
+                return { ...interview, rounds: roundsRes.data || [] };
+              } catch (e) {
+                return { ...interview, rounds: [] };
+              }
+            })
+          );
+          setInterviews(interviewsWithRounds);
         })
         .catch(err => {
           console.error('获取采访记录失败:', err);
@@ -796,15 +808,9 @@ const PersonCard = () => {
                   </div>
                   <div className="bg-green-50 p-3 rounded-lg flex-1 text-center">
                     <div className="text-2xl font-bold text-green-600">
-                      {interviews.reduce((sum, i) => sum + (i.rounds?.length || 0), 0)}
+                      {interviews.reduce((sum, i) => sum + (i.round_count || 0), 0)}
                     </div>
                     <div className="text-sm text-gray-600">总轮次</div>
-                  </div>
-                  <div className="bg-purple-50 p-3 rounded-lg flex-1 text-center">
-                    <div className="text-2xl font-bold text-purple-600">
-                      {interviews.reduce((sum, i) => sum + (i.stories_count || 0), 0)}
-                    </div>
-                    <div className="text-sm text-gray-600">生成故事</div>
                   </div>
                 </div>
 
@@ -823,62 +829,82 @@ const PersonCard = () => {
                             {new Date(interview.created_at).toLocaleDateString('zh-CN')}
                           </div>
                           <div className="text-sm text-gray-500">
-                            {interview.rounds?.length || 0} 轮 · {interview.stories_count || 0} 故事
-                            {interview.status === 'done' ? ' · 已完成' : interview.status === 'abandoned' ? ' · 已放弃' : ''}
+                            {interview.round_count || 0} 轮 · {interview.topic_hint || '未指定主题'}
                           </div>
                         </div>
-                        <svg
-                          className={`w-5 h-5 transform transition-transform ${
-                            expandedInterview === interview.session_id ? 'rotate-180' : ''
-                          }`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
+                        {/* generation_status 指示 */}
+                        <div className="flex items-center gap-2">
+                          {interview.generation_status === 'done' && (
+                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">已完成</span>
+                          )}
+                          {(interview.generation_status === 'generating_layer2' || interview.generation_status === 'generating_layer3') && (
+                            <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">生成中...</span>
+                          )}
+                          {interview.generation_status === 'failed' && (
+                            <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">生成失败</span>
+                          )}
+                          <svg
+                            className={`w-5 h-5 transform transition-transform ${
+                              expandedInterview === interview.session_id ? 'rotate-180' : ''
+                            }`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
                       </div>
                       {expandedInterview === interview.session_id && (
                         <div className="p-3 border-t">
-                          {interview.rounds?.length > 0 ? (
-                            <div className="space-y-3">
-                              {interview.rounds.map((round, idx) => (
-                                <div key={round.id} className="border rounded-lg p-3">
-                                  <div className="font-medium text-sm text-gray-600 mb-2">
-                                    第 {idx + 1} 轮
-                                  </div>
-                                  <div className="space-y-2">
-                                    <div>
-                                      <div className="text-xs text-gray-500">问题</div>
-                                      <div className="text-sm">{round.question}</div>
-                                    </div>
-                                    {round.answer && (
-                                      <div>
-                                        <div className="text-xs text-gray-500">回答</div>
-                                        <div className="text-sm text-gray-700">{round.answer}</div>
-                                      </div>
-                                    )}
-                                    {round.story_id && (
-                                      <div>
-                                        <div className="text-xs text-gray-500">生成故事</div>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            navigate(`/story/${round.story_id}`);
-                                          }}
-                                          className="text-sm text-blue-500 hover:underline"
-                                        >
-                                          查看故事
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
+                          {/* 关联故事标题 */}
+                          <div className="mb-3 text-sm">
+                            <span className="text-gray-500">关联故事：</span>
+                            <span className="font-medium ml-1">
+                              {interview.story_title || '故事生成中'}
+                            </span>
+                          </div>
+                          {/* 问答对（复用 StoryDetail Tab2 样式） */}
+                          <div className="space-y-3">
+                            {interview.rounds?.length > 0 ? interview.rounds.map((round, idx) => (
+                              <div key={round.id} className="border rounded-lg p-3">
+                                <div className="font-medium text-sm text-gray-600 mb-2">
+                                  第 {idx + 1} 轮
                                 </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-gray-500 text-sm">无轮次数据</div>
-                          )}
+                                <div className="space-y-2">
+                                  <div>
+                                    <div className="text-xs text-gray-500">问题</div>
+                                    <div className="text-sm">{round.question}</div>
+                                  </div>
+                                  {round.transcript && (
+                                    <div>
+                                      <div className="text-xs text-gray-500">回答</div>
+                                      <div className="text-sm text-gray-700">{round.transcript}</div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )) : (
+                              <div className="text-gray-500 text-sm">无轮次数据</div>
+                            )}
+                          </div>
+                          {/* 查看完整故事按钮 */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (interview.story_id) {
+                                navigate(`/story/${interview.story_id}`);
+                              }
+                            }}
+                            disabled={!interview.story_id}
+                            className={`w-full mt-3 py-2 rounded-lg ${
+                              interview.story_id
+                                ? 'bg-[#4A3728] text-white hover:bg-[#5A4738]'
+                                : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                            }`}
+                          >
+                            {interview.story_id ? '查看完整故事' : '故事生成中'}
+                          </button>
                         </div>
                       )}
                     </div>
