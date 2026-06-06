@@ -104,6 +104,5 @@ export const completeInterview = (sessionId) => api.post(`/interviews/${sessionI
 export const abandonInterview = (sessionId) => api.post(`/interviews/${sessionId}/abandon`);
 export const getPersonInterviews = (personId) => api.get(`/persons/${personId}/interviews`);
 export const getStoryGenerationStatus = (storyId) => api.get(`/stories/${storyId}/generation-status`);
-// export const getStory = (storyId) => api.get(`/stories/${storyId}`);
 
 export default api;
