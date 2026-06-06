@@ -1168,14 +1168,24 @@ async def compile_interview_stories_task(session_id: str):
             db.commit()
 
             # ========== Layer 3: 叙事润色 ==========
-            prompt_layer3 = f"""请根据以下采访内容，写一篇叙事性文章（300-500字）：
-- 以第一人称"我"叙述
-- 时间顺序组织
-- 保留细节和情感
-- 结尾可以升华主题
+            # 获取结构化信息作为上下文
+            layer2_info = ""
+            if story.structured_snippets:
+                try:
+                    snippets = json_lib.loads(story.structured_snippets)
+                    layer2_info = f"故事概要：{snippets.get('summary', '')}\n关键事件：{', '.join(snippets.get('key_events', []))}\n"
+                except:
+                    pass
 
-采访内容：
-{transcript[:4000]}"""
+            prompt_layer3 = f"""以下是一位老人接受采访时的口述记录：
+{transcript[:4000]}
+
+{layer2_info}
+请根据以上内容，为这位老人撰写一篇第一人称的自述文章。
+要求：口语化，保留老人的语言风格，像她亲笔写的那样。
+不必严格按时间顺序，让故事自然流淌。
+篇幅200-400字，有温度，有细节，能打动人。
+直接返回文章正文，不要任何前缀。"""
 
             response = client.chat.completions.create(
                 model="ep-20260521233914-gllp4",
@@ -2037,6 +2047,36 @@ def read_story(story_id: str, db: Session = Depends(get_db)):
         ai_tag_status=db_story.ai_tag_status,
         persons=persons
     )
+
+
+class GenerationStatusResponse(BaseModel):
+    """生成状态响应"""
+    status: str  # pending/generating_layer2/generating_layer3/done/failed
+    has_layer2: bool
+    has_layer3: bool
+
+
+@app.get("/stories/{story_id}/generation-status", response_model=GenerationStatusResponse)
+def get_story_generation_status(story_id: str, db: Session = Depends(get_db)):
+    """返回故事的生成进度"""
+    story = db.query(models.Story).filter(models.Story.id == story_id).first()
+    if not story:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    status = story.generation_status or "pending"
+    has_layer2 = status in ("generating_layer3", "done") or (
+        story.structured_snippets is not None and story.structured_snippets != ""
+    )
+    has_layer3 = status == "done" or (
+        story.narrative_polish is not None and story.narrative_polish != ""
+    )
+
+    return GenerationStatusResponse(
+        status=status,
+        has_layer2=has_layer2,
+        has_layer3=has_layer3,
+    )
+
 
 @app.post("/story-persons", response_model=StoryPersonResponse)
 def create_story_person(sp: StoryPersonCreate, db: Session = Depends(get_db)):
