@@ -91,9 +91,14 @@ export const startInterview = (personId, preferredThemes) => {
   const data = preferredThemes?.length > 0 ? { preferred_themes: preferredThemes } : {};
   return api.post(`/persons/${personId}/interviews/start`, data);
 };
-export const submitInterviewAnswer = (sessionId, formData) => api.post(`/interviews/${sessionId}/answer`, formData, {
-  headers: { 'Content-Type': 'multipart/form-data' }
-});
+export const submitInterviewAnswer = (sessionId, formData, question = null) => {
+  if (question) {
+    formData.append('question', question);
+  }
+  return api.post(`/interviews/${sessionId}/answer`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+};
 export const getInterviewRoundStatus = (sessionId, roundId) => api.get(`/interviews/${sessionId}/rounds/${roundId}/status`);
 export const getNextQuestion = (sessionId, roundId) => {
   // roundId 为 null 或 undefined 时不传该字段

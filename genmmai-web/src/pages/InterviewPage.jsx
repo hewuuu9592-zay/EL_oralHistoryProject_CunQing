@@ -189,7 +189,9 @@ const InterviewPage = () => {
     try {
       const formData = new FormData();
       formData.append('audio_file', audioBlob);
-      const res = await submitInterviewAnswer(session.id, formData);
+      // 获取当前问题（最后一轮）
+      const currentQuestion = rounds[rounds.length - 1]?.question || '';
+      const res = await submitInterviewAnswer(session.id, formData, currentQuestion);
       const roundId = res.data.round_id;
 
       setCurrentRound({ id: roundId, status: 'processing' });

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks, Form
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -780,7 +780,13 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
 
 
 @app.post("/interviews/{session_id}/answer", response_model=InterviewAnswerResponse)
-async def submit_answer(session_id: str, audio_file: UploadFile, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def submit_answer(
+    session_id: str,
+    audio_file: UploadFile,
+    background_tasks: BackgroundTasks,   # 移到前面
+    db: Session = Depends(get_db),       # 有默认值（依赖）
+    question: str = Form(None)           # 有默认值（表单字段）
+):
     """接收音频回答，创建轮次记录"""
     session = db.query(models.InterviewSession).filter(
         models.InterviewSession.id == session_id
@@ -790,8 +796,8 @@ async def submit_answer(session_id: str, audio_file: UploadFile, background_task
     if session.status != "active":
         raise HTTPException(status_code=400, detail="采访会话已结束")
 
-    # 获取当前轮次
-    current_round_index = session.round_count
+    # 获取下一轮次（问答为一轮，所以+1）
+    current_round_index = session.round_count + 1
 
     # 保存音频文件
     audio_dir = Path("static/audio/interviews")
@@ -809,12 +815,13 @@ async def submit_answer(session_id: str, audio_file: UploadFile, background_task
     round_record = models.InterviewRound(
         session_id=session_id,
         round_index=current_round_index,
+        question=question,
         audio_url=audio_url,
         transcript_status="processing",
     )
     db.add(round_record)
 
-    # 更新会话轮次（问答为一轮，所以只在提交回答时+1）
+    # 更新会话轮次+1
     session.round_count = current_round_index
 
     db.commit()
