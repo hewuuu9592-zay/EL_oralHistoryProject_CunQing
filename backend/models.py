@@ -98,6 +98,10 @@ class Story(Base):
     related_history = Column(String, nullable=True)  # 冗余存储事件标题
     transcription_status = Column(String, default="pending")  # pending, processing, done, failed
     ai_tag_status = Column(String, default="untagged")  # untagged, processing, done, failed
+    source_session_id = Column(String, nullable=True)  # 来源采访session的id
+    structured_snippets = Column(Text, nullable=True)  # 第二层结构化摘录，JSON字符串
+    narrative_polish = Column(Text, nullable=True)  # 第三层叙事化润色文章
+    generation_status = Column(String, default="pending")  # pending/generating_layer2/generating_layer3/done/failed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     story_persons = relationship("StoryPerson", back_populates="story")
@@ -119,7 +123,9 @@ class InterviewSession(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     person_id = Column(String, ForeignKey("persons.id"), nullable=False)
     status = Column(String, default="active")  # active/completed/abandoned
-    topic_hint = Column(String, nullable=True)  # 本次采访的主题方向
+    topic_hint = Column(String, nullable=True)  # 本次采访的主题方向（用户输入）
+    topic = Column(String, nullable=True)  # 本次采访的主题（AI生成）
+    story_id = Column(String, nullable=True)  # 采访完成后关联生成的故事id
     round_count = Column(Integer, default=0)  # 实际轮次数
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
