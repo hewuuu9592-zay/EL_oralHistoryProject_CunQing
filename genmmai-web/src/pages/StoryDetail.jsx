@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getStory, patchStory, getPersons } from '../api';
+import { getStory, patchStory, getPersons, getStoryGenerationStatus } from '../api';
 import { useTheme } from '../contexts/ThemeContext';
 
 const StoryDetail = () => {
@@ -13,6 +13,12 @@ const StoryDetail = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  // Tab 切换状态
+  const [activeTab, setActiveTab] = useState('story'); // story | transcript | structured
+  const [showPolished, setShowPolished] = useState(true); // 润色版 vs 原始转录
+  const [generationStatus, setGenerationStatus] = useState(null);
+  const pollTimerRef = useRef(null);
 
   // 编辑表单状态
   const [editTranscript, setEditTranscript] = useState('');
@@ -34,6 +40,26 @@ const StoryDetail = () => {
       try {
         const res = await getStory(id);
         setStory(res.data);
+
+        // 轮询生成状态
+        if (res.data?.generation_status && res.data.generation_status !== 'done') {
+          const pollStatus = async () => {
+            try {
+              const statusRes = await getStoryGenerationStatus(id);
+              setGenerationStatus(statusRes);
+              if (statusRes.status === 'done' || statusRes.status === 'failed') {
+                // 刷新故事数据
+                const storyRes = await getStory(id);
+                setStory(storyRes.data);
+              } else {
+                pollTimerRef.current = setTimeout(pollStatus, 3000);
+              }
+            } catch (e) {
+              console.error('轮询失败:', e);
+            }
+          };
+          pollTimerRef.current = setTimeout(pollStatus, 3000);
+        }
       } catch (err) {
         console.error('获取故事失败:', err);
       } finally {
@@ -41,6 +67,11 @@ const StoryDetail = () => {
       }
     };
     fetchStory();
+
+    // 清理轮询
+    return () => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
   }, [id]);
 
   // 打开编辑 Modal
@@ -304,11 +335,145 @@ const StoryDetail = () => {
           </div>
         )}
 
-        {/* 故事正文 */}
-        <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm">
-          <p className="font-serif text-[#4A3728] text-lg leading-[1.8] whitespace-pre-wrap">
-            {story.transcript || '暂无文字内容'}
-          </p>
+        {/* Tab 切换区域 */}
+        <div className="mb-6">
+          {/* Tab 标题 */}
+          <div className="flex border-b border-gray-200 mb-4">
+            <button
+              onClick={() => setActiveTab('story')}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'story'
+                  ? 'text-[#4A3728] border-b-2 border-[#4A3728]'
+                  : 'text-gray-400'
+              }`}
+            >
+              故事
+            </button>
+            <button
+              onClick={() => setActiveTab('transcript')}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'transcript'
+                  ? 'text-[#4A3728] border-b-2 border-[#4A3728]'
+                  : 'text-gray-400'
+              }`}
+            >
+              对话记录
+            </button>
+            <button
+              onClick={() => setActiveTab('structured')}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'structured'
+                  ? 'text-[#4A3728] border-b-2 border-[#4A3728]'
+                  : 'text-gray-400'
+              }`}
+            >
+              结构化信息
+            </button>
+          </div>
+
+          {/* Tab1: 故事（第三层） */}
+          {activeTab === 'story' && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm">
+              {/* 生成进度条 */}
+              {generationStatus && generationStatus.status !== 'done' && (
+                <div className="mb-4 text-sm text-gray-500">
+                  {generationStatus.status === 'generating_layer2' && 'AI 正在提炼结构化信息...'}
+                  {generationStatus.status === 'generating_layer3' && 'AI 正在撰写故事文章...'}
+                  {generationStatus.status === 'pending' && '故事生成中...'}
+                  {generationStatus.status === 'failed' && '故事生成失败'}
+                </div>
+              )}
+
+              {/* 切换：润色版/原始转录 */}
+              <div className="flex justify-end mb-3">
+                <button
+                  onClick={() => setShowPolished(!showPolished)}
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                >
+                  {showPolished ? '查看原始转录' : '查看润色版'}
+                </button>
+              </div>
+
+              {/* 内容 */}
+              {(showPolished ? story.narrative_polish : story.transcript) ? (
+                <p className="font-serif text-[#4A3728] text-lg leading-[1.8] whitespace-pre-wrap">
+                  {showPolished ? story.narrative_polish : story.transcript}
+                </p>
+              ) : (
+                <p className="text-gray-400 text-center py-8">故事生成中...</p>
+              )}
+            </div>
+          )}
+
+          {/* Tab2: 对话记录（第一层） */}
+          {activeTab === 'transcript' && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm">
+              <p className="font-serif text-[#4A3728] text-base leading-relaxed whitespace-pre-wrap">
+                {story.transcript || '暂无对话记录'}
+              </p>
+            </div>
+          )}
+
+          {/* Tab3: 结构化信息（第二层） */}
+          {activeTab === 'structured' && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+              {story.title && (
+                <div>
+                  <h4 className="text-xs text-gray-400 uppercase mb-1">标题</h4>
+                  <p className="text-lg font-serif text-[#4A3728]">{story.title}</p>
+                </div>
+              )}
+              {story.summary && (
+                <div>
+                  <h4 className="text-xs text-gray-400 uppercase mb-1">摘要</h4>
+                  <p className="text-gray-700">{story.summary}</p>
+                </div>
+              )}
+              {story.time_range && (
+                <div>
+                  <h4 className="text-xs text-gray-400 uppercase mb-1">时间范围</h4>
+                  <p className="text-gray-700">{story.time_range}</p>
+                </div>
+              )}
+              {story.tags && (
+                <div>
+                  <h4 className="text-xs text-gray-400 uppercase mb-1">标签</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {JSON.parse(story.tags || '[]').map((tag, i) => (
+                      <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm text-gray-600">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {story.key_events && (
+                <div>
+                  <h4 className="text-xs text-gray-400 uppercase mb-1">核心事件</h4>
+                  <ul className="space-y-1">
+                    {JSON.parse(story.key_events || '[]').map((event, i) => (
+                      <li key={i} className="text-gray-700">• {event}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {story.involved_people && (
+                <div>
+                  <h4 className="text-xs text-gray-400 uppercase mb-1">涉及人物</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {JSON.parse(story.involved_people || '[]').map((person, i) => (
+                      <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm text-gray-600">
+                        {person}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!story.title && !story.summary && (
+                <p className="text-gray-400 text-center py-8">结构化信息生成中...</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 涉及人物 */}
