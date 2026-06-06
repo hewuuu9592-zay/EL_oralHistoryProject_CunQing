@@ -468,60 +468,71 @@ const StoryDetail = () => {
           {/* Tab3: 结构化信息（第二层） */}
           {activeTab === 'structured' && (
             <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
-              {story.title && (
-                <div>
-                  <h4 className="text-xs text-gray-400 uppercase mb-1">标题</h4>
-                  <p className="text-lg font-serif text-[#4A3728]">{story.title}</p>
-                </div>
+              {/* 生成中状态 */}
+              {(!generationStatus || generationStatus.status !== 'done') && !story.title && !story.summary && (
+                <p className="text-gray-400 text-center py-8">结构化信息生成中...</p>
               )}
-              {story.summary && (
-                <div>
-                  <h4 className="text-xs text-gray-400 uppercase mb-1">摘要</h4>
-                  <p className="text-gray-700">{story.summary}</p>
-                </div>
-              )}
+
+              {/* 时间范围 */}
               {story.time_range && (
                 <div>
                   <h4 className="text-xs text-gray-400 uppercase mb-1">时间范围</h4>
                   <p className="text-gray-700">{story.time_range}</p>
                 </div>
               )}
+
+              {/* 核心标签 */}
               {story.tags && (
                 <div>
-                  <h4 className="text-xs text-gray-400 uppercase mb-1">标签</h4>
+                  <h4 className="text-xs text-gray-400 uppercase mb-1">核心标签</h4>
                   <div className="flex flex-wrap gap-2">
                     {JSON.parse(story.tags || '[]').map((tag, i) => (
-                      <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm text-gray-600">
+                      <span key={i} className="px-3 py-1 bg-[#FEF3C7] text-amber-700 rounded-full text-sm">
                         {tag}
                       </span>
                     ))}
                   </div>
                 </div>
               )}
-              {story.key_events && (
-                <div>
-                  <h4 className="text-xs text-gray-400 uppercase mb-1">核心事件</h4>
-                  <ul className="space-y-1">
-                    {JSON.parse(story.key_events || '[]').map((event, i) => (
-                      <li key={i} className="text-gray-700">• {event}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+
+              {/* 涉及人物 */}
               {story.involved_people && (
                 <div>
                   <h4 className="text-xs text-gray-400 uppercase mb-1">涉及人物</h4>
                   <div className="flex flex-wrap gap-2">
                     {JSON.parse(story.involved_people || '[]').map((person, i) => (
-                      <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm text-gray-600">
+                      <span key={i} className="px-3 py-1 bg-[#DBEAFE] text-blue-700 rounded-full text-sm">
                         {person}
                       </span>
                     ))}
                   </div>
                 </div>
               )}
-              {!story.title && !story.summary && (
-                <p className="text-gray-400 text-center py-8">结构化信息生成中...</p>
+
+              {/* 核心事件 */}
+              {story.key_events && (
+                <div>
+                  <h4 className="text-xs text-gray-400 uppercase mb-1">核心事件</h4>
+                  <ol className="space-y-1 list-decimal list-inside">
+                    {JSON.parse(story.key_events || '[]').map((event, i) => (
+                      <li key={i} className="text-gray-700">{event}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              {/* 来源采访 */}
+              {story.source_session_id && (
+                <div>
+                  <h4 className="text-xs text-gray-400 uppercase mb-1">来源采访</h4>
+                  <button
+                    onClick={() => navigate(`/person/${story.persons?.[0]?.id}?tab=interviews`)}
+                    className="text-sm text-[#4A3728] hover:underline"
+                  >
+                    {story.created_at ? new Date(story.created_at).toLocaleDateString('zh-CN') : ''} ·{' '}
+                    {story.transcript?.split('【第').length - 1} 轮对话
+                  </button>
+                </div>
               )}
             </div>
           )}
