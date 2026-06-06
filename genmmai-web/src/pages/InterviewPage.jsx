@@ -150,6 +150,16 @@ const InterviewPage = () => {
     }
   };
 
+  // 上传录音文件
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAudioBlob(file);
+    const url = URL.createObjectURL(file);
+    setAudioUrl(url);
+    setRecordingTime(0);
+  };
+
   // 重新录制
   const handleReRecord = () => {
     setAudioBlob(null);
@@ -525,12 +535,23 @@ const InterviewPage = () => {
               <div className="flex flex-col items-center py-2">
                 {/* 待录音状态 */}
                 {!audioUrl && !isRecording && (
-                  <button
-                    onClick={startRecording}
-                    className="w-20 h-20 rounded-full bg-[#C9A84C] flex items-center justify-center hover:bg-[#D4B85C] transition-all shadow-lg"
-                  >
-                    <div className="w-16 h-16 rounded-full bg-[#D4B85C]" />
-                  </button>
+                  <div className="flex flex-col items-center gap-3">
+                    <button
+                      onClick={startRecording}
+                      className="w-20 h-20 rounded-full bg-[#C9A84C] flex items-center justify-center hover:bg-[#D4B85C] transition-all shadow-lg"
+                    >
+                      <div className="w-16 h-16 rounded-full bg-[#D4B85C]" />
+                    </button>
+                    <label className="cursor-pointer px-4 py-2 border border-gray-300 rounded text-sm text-gray-500">
+                      <span>上传录音文件</span>
+                      <input
+                        type="file"
+                        accept="audio/*"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                      />
+                    </label>
+                  </div>
                 )}
 
                 {/* 录音中 */}
