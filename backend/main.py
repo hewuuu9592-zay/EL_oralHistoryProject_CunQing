@@ -1053,7 +1053,9 @@ def complete_interview(session_id: str, background_tasks: BackgroundTasks, db: S
 
     combined_transcript = ""
     for r in rounds:
-        combined_transcript += f"【第{r.round_index}轮】{r.transcript}\n"
+        if r.question:
+            combined_transcript += f"【问】{r.question}\n"
+        combined_transcript += f"【答-第{r.round_index}轮】{r.transcript}\n\n"
 
     # 创建唯一的故事记录
     story = models.Story(
@@ -1131,7 +1133,8 @@ async def compile_interview_stories_task(session_id: str):
             theme_options = "/".join(THEMES)
 
             # ========== Layer 1: 提取基本信息 (summary, year, theme) ==========
-            prompt_layer1 = f"""从以下采访内容中提取故事的基本信息：
+            try:
+                prompt_layer1 = f"""从以下采访内容中提取故事的基本信息：
 - summary：一句话故事摘要
 - year：故事发生的大致年份（如果没有明确年份，估算一个）
 - theme：从以下主题选择其一：{theme_options}
@@ -1142,29 +1145,32 @@ async def compile_interview_stories_task(session_id: str):
 采访内容：
 {transcript[:3000]}"""
 
-            response = client.chat.completions.create(
-                model="ep-20260521233914-gllp4",
-                messages=[{"role": "user", "content": prompt_layer1}],
-                temperature=0.3,
-            )
+                response = client.chat.completions.create(
+                    model="ep-20260521233914-gllp4",
+                    messages=[{"role": "user", "content": prompt_layer1}],
+                    temperature=0.3,
+                )
 
-            result_text = response.choices[0].message.content.strip()
+                result_text = response.choices[0].message.content.strip()
 
-            try:
-                if "```json" in result_text:
-                    result_text = result_text.split("```json")[1].split("```")[0]
-                layer1_data = json_lib.loads(result_text.strip())
-                story.summary = layer1_data.get("summary", "")[:100]
-                story.year = layer1_data.get("year")
-                story.theme = layer1_data.get("theme", "其他")
-            except json_lib.JSONDecodeError as e:
-                print(f"解析Layer1失败: {e}")
+                try:
+                    if "```json" in result_text:
+                        result_text = result_text.split("```json")[1].split("```")[0]
+                    layer1_data = json_lib.loads(result_text.strip())
+                    story.summary = layer1_data.get("summary", "")[:100]
+                    story.year = layer1_data.get("year")
+                    story.theme = layer1_data.get("theme", "其他")
+                except json_lib.JSONDecodeError as e:
+                    print(f"解析Layer1失败: {e}")
+            except Exception as e:
+                print(f"Layer1调用失败: {e}")
 
             story.generation_status = "generating_layer2"
             db.commit()
 
             # ========== Layer 2: 结构化摘录 ==========
-            prompt_layer2 = f"""以下是一段口述采访的完整对话记录：
+            try:
+                prompt_layer2 = f"""以下是一段口述采访的完整对话记录：
 {transcript[:4000]}
 
 请提取结构化信息，只返回JSON：
@@ -1180,48 +1186,51 @@ async def compile_interview_stories_task(session_id: str):
   "key_events": ["核心事件1", "核心事件2"]
 }}"""
 
-            response = client.chat.completions.create(
-                model="ep-20260521233914-gllp4",
-                messages=[{"role": "user", "content": prompt_layer2}],
-                temperature=0.5,
-            )
+                response = client.chat.completions.create(
+                    model="ep-20260521233914-gllp4",
+                    messages=[{"role": "user", "content": prompt_layer2}],
+                    temperature=0.5,
+                )
 
-            result_text = response.choices[0].message.content.strip()
+                result_text = response.choices[0].message.content.strip()
 
-            try:
-                if "```json" in result_text:
-                    result_text = result_text.split("```json")[1].split("```")[0]
-                layer2_data = json_lib.loads(result_text.strip())
-                # 更新 story 表各个字段
-                story.title = layer2_data.get("title", "")[:10] if layer2_data.get("title") else None
-                story.summary = layer2_data.get("summary", "")[:20] if layer2_data.get("summary") else None
-                story.year = layer2_data.get("year")
-                story.decade = layer2_data.get("decade")
-                story.theme = layer2_data.get("theme")
-                story.time_range = layer2_data.get("time_range")
-                story.tags = json_lib.dumps(layer2_data.get("tags", [])) if layer2_data.get("tags") else "[]"
-                story.involved_people = json_lib.dumps(layer2_data.get("involved_people", [])) if layer2_data.get("involved_people") else "[]"
-                story.key_events = json_lib.dumps(layer2_data.get("key_events", [])) if layer2_data.get("key_events") else "[]"
-                # structured_snippets 存完整JSON字符串
-                story.structured_snippets = json_lib.dumps(layer2_data)
-            except json_lib.JSONDecodeError as e:
-                print(f"解析Layer2失败: {e}")
-                story.structured_snippets = "{}"
+                try:
+                    if "```json" in result_text:
+                        result_text = result_text.split("```json")[1].split("```")[0]
+                    layer2_data = json_lib.loads(result_text.strip())
+                    # 更新 story 表各个字段
+                    story.title = layer2_data.get("title", "")[:10] if layer2_data.get("title") else None
+                    story.summary = layer2_data.get("summary", "")[:20] if layer2_data.get("summary") else None
+                    story.year = layer2_data.get("year")
+                    story.decade = layer2_data.get("decade")
+                    story.theme = layer2_data.get("theme")
+                    story.time_range = layer2_data.get("time_range")
+                    story.tags = json_lib.dumps(layer2_data.get("tags", [])) if layer2_data.get("tags") else "[]"
+                    story.involved_people = json_lib.dumps(layer2_data.get("involved_people", [])) if layer2_data.get("involved_people") else "[]"
+                    story.key_events = json_lib.dumps(layer2_data.get("key_events", [])) if layer2_data.get("key_events") else "[]"
+                    # structured_snippets 存完整JSON字符串
+                    story.structured_snippets = json_lib.dumps(layer2_data)
+                except json_lib.JSONDecodeError as e:
+                    print(f"解析Layer2失败: {e}")
+                    story.structured_snippets = "{}"
+            except Exception as e:
+                print(f"Layer2调用失败: {e}")
 
             story.generation_status = "generating_layer3"
             db.commit()
 
             # ========== Layer 3: 叙事润色 ==========
-            # 获取结构化信息作为上下文
-            layer2_info = ""
-            if story.structured_snippets:
-                try:
-                    snippets = json_lib.loads(story.structured_snippets)
-                    layer2_info = f"故事概要：{snippets.get('summary', '')}\n关键事件：{', '.join(snippets.get('key_events', []))}\n"
-                except:
-                    pass
+            try:
+                # 获取结构化信息作为上下文
+                layer2_info = ""
+                if story.structured_snippets:
+                    try:
+                        snippets = json_lib.loads(story.structured_snippets)
+                        layer2_info = f"故事概要：{snippets.get('summary', '')}\n关键事件：{', '.join(snippets.get('key_events', []))}\n"
+                    except:
+                        pass
 
-            prompt_layer3 = f"""以下是一位老人接受采访时的口述记录：
+                prompt_layer3 = f"""以下是一位老人接受采访时的口述记录：
 {transcript[:4000]}
 
 {layer2_info}
@@ -1231,16 +1240,21 @@ async def compile_interview_stories_task(session_id: str):
 篇幅200-400字，有温度，有细节，能打动人。
 直接返回文章正文，不要任何前缀。"""
 
-            response = client.chat.completions.create(
-                model="ep-20260521233914-gllp4",
-                messages=[{"role": "user", "content": prompt_layer3}],
-                temperature=0.7,
-            )
+                response = client.chat.completions.create(
+                    model="ep-20260521233914-gllp4",
+                    messages=[{"role": "user", "content": prompt_layer3}],
+                    temperature=0.7,
+                )
 
-            story.narrative_polish = response.choices[0].message.content.strip()
-            story.generation_status = "done"
-            story.ai_tag_status = "done"
-            db.commit()
+                story.narrative_polish = response.choices[0].message.content.strip()
+                story.generation_status = "done"
+                story.ai_tag_status = "done"
+                db.commit()
+            except Exception as e:
+                print(f"Layer3调用失败: {e}")
+                # 即使Layer3失败，也确保状态不是卡在中间
+                story.generation_status = "done"
+                db.commit()
 
         except Exception as e:
             print(f"三层处理失败: {str(e)}")

@@ -215,11 +215,13 @@ const InterviewPage = () => {
             });
 
             // 更新历史
-            setRounds(prev => prev.map(r =>
-              r.round_index === (session.round_index || rounds.length)
-                ? { ...r, transcript: data.transcript }
-                : r
-            ));
+            setRounds(prev => {
+              return prev.map((r, idx) =>
+                idx === prev.length - 1
+                  ? { ...r, id: roundId, transcript: data.transcript }
+                  : r
+              )
+            })
           } else if (data.status === 'failed') {
             clearInterval(pollTimerRef.current);
             setTranscribing(false);
@@ -251,6 +253,7 @@ const InterviewPage = () => {
       const data = res.data;
 
       const newRound = {
+        id: null,  // 提交回答后才有 id
         round_index: data.round_index,
         question: data.question,
         transcript: null,
@@ -262,6 +265,7 @@ const InterviewPage = () => {
       setAudioBlob(null);
       setAudioUrl(null);
       setRecordingTime(0);
+      setTranscribing(false);
 
       // 自动滚动到底部
       setTimeout(() => {
@@ -715,10 +719,9 @@ const InterviewPage = () => {
       );
     }
 
-    // 生成中状态
-    const isLayer1Done = saving || genStatus?.status === 'pending';
-    const isLayer2Done = genStatus?.has_layer2;
-    const isLayer3Done = genStatus?.has_layer3;
+    const isLayer1Done = !!currentStoryId; // 有 story_id 就说明对话记录已保存
+    const isLayer2Done = genStatus?.has_layer2 === true;
+    const isLayer3Done = genStatus?.has_layer3 === true;
 
     return (
       <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
