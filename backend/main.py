@@ -814,8 +814,8 @@ async def submit_answer(session_id: str, audio_file: UploadFile, background_task
     )
     db.add(round_record)
 
-    # 更新会话轮次
-    session.round_count = current_round_index + 1
+    # 更新会话轮次（问答为一轮，所以只在提交回答时+1）
+    session.round_count = current_round_index
 
     db.commit()
     db.refresh(round_record)
@@ -870,9 +870,11 @@ def get_round_status(session_id: str, round_id: str, db: Session = Depends(get_d
 
 @app.get("/interviews/{session_id}/rounds")
 def get_session_rounds(session_id: str, db: Session = Depends(get_db)):
-    """获取采访会话的所有轮次"""
+    """获取采访会话的所有轮次（只返回有回答的轮次）"""
     rounds = db.query(models.InterviewRound).filter(
-        models.InterviewRound.session_id == session_id
+        models.InterviewRound.session_id == session_id,
+        models.InterviewRound.transcript.isnot(None),
+        models.InterviewRound.transcript != "",
     ).order_by(models.InterviewRound.round_index.asc()).all()
 
     return [
@@ -1001,7 +1003,7 @@ def get_next_question(session_id: str, request: dict, db: Session = Depends(get_
         question=question,
     )
     db.add(new_round)
-    session.round_count = current_index + 1
+    # round_count 在 submit_answer 时已经更新了，这里不再重复+1
     db.commit()
 
     return InterviewNextQuestionResponse(
@@ -1280,10 +1282,17 @@ def get_person_interviews(person_id: str, db: Session = Depends(get_db)):
                 story_title = story.title
                 generation_status = story.generation_status
 
+        # 计算有实际回答的轮次（transcript 不为空的轮次）
+        answered_rounds = db.query(models.InterviewRound).filter(
+            models.InterviewRound.session_id == session.id,
+            models.InterviewRound.transcript.isnot(None),
+            models.InterviewRound.transcript != "",
+        ).count()
+
         result.append(InterviewSessionBrief(
             session_id=session.id,
             created_at=session.created_at,
-            round_count=session.round_count,
+            round_count=answered_rounds,
             status=session.status,
             topic_hint=session.topic_hint,
             story_id=session.story_id,
