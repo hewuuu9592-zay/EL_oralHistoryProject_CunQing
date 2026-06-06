@@ -77,6 +77,17 @@ const InterviewPage = () => {
   // 开始采访
   const handleStart = async () => {
     try {
+      // 先进入采访界面，显示"问题生成中..."
+      setStage('interviewing');
+      setSession({ id: null, topic_hint: selectedThemes.join(',') });
+      setRounds([{
+        round_index: 1,
+        question: null, // 等待生成
+        transcript: null,
+        audio_url: null,
+      }]);
+
+      // 然后异步创建采访并生成问题
       const res = await startInterview(personId, selectedThemes);
       const data = res.data;
       setSession({
@@ -89,10 +100,10 @@ const InterviewPage = () => {
         transcript: null,
         audio_url: null,
       }]);
-      setStage('interviewing');
     } catch (e) {
       console.error('开始采访失败:', e);
       alert('开始失败，请重试');
+      setStage('ready');
     }
   };
 
@@ -500,7 +511,7 @@ const InterviewPage = () => {
                 <div className="flex items-start gap-2 mb-2">
                   <div className="w-7 h-7 rounded-full bg-gray-300 flex-shrink-0 flex items-center justify-center text-xs">🎙️</div>
                   <div className="bg-gray-100 rounded-xl px-3 py-2 text-sm text-[#4A3728] max-w-[80%]">
-                    {r.question}
+                    {r.question || '正在生成问题...'}
                   </div>
                 </div>
                 {/* 老人回答：右侧气泡 */}
