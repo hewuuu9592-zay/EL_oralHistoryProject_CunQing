@@ -136,7 +136,8 @@ class InterviewNextQuestionResponse(BaseModel):
 class InterviewCompleteResponse(BaseModel):
     """完成采访响应"""
     session_id: str
-    stories_created: int
+    story_id: Optional[str] = None
+    status: str  # processing/completed/failed
 
 
 class InterviewSessionBrief(BaseModel):
@@ -977,7 +978,9 @@ def get_next_question(session_id: str, request: dict, db: Session = Depends(get_
 
 @app.post("/interviews/{session_id}/complete", response_model=InterviewCompleteResponse)
 def complete_interview(session_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """完成采访，自动整理故事"""
+    """完成采访，生成唯一的故事并触发三层异步处理"""
+    import json as json_lib
+
     session = db.query(models.InterviewSession).filter(
         models.InterviewSession.id == session_id
     ).first()
@@ -987,51 +990,91 @@ def complete_interview(session_id: str, background_tasks: BackgroundTasks, db: S
     if session.status != "active":
         raise HTTPException(status_code=400, detail="采访会话已结束")
 
-    # 标记完成
+    # 收集所有轮次的转写文字（保留轮次标记）
+    rounds = db.query(models.InterviewRound).filter(
+        models.InterviewRound.session_id == session_id,
+        models.InterviewRound.transcript.isnot(None),
+        models.InterviewRound.transcript_status == "done"
+    ).order_by(models.InterviewRound.round_index.asc()).all()
+
+    # 如果没有有效转写，标记为废弃
+    if not rounds:
+        session.status = "abandoned"
+        db.commit()
+        return InterviewCompleteResponse(
+            session_id=session_id,
+            story_id=None,
+            status="failed",
+        )
+
+    combined_transcript = ""
+    for r in rounds:
+        combined_transcript += f"【第{r.round_index}轮】{r.transcript}\n"
+
+    # 创建唯一的故事记录
+    story = models.Story(
+        transcript=combined_transcript.strip(),
+        source_session_id=session_id,
+        person_ids=json_lib.dumps([session.person_id]),
+        generation_status="pending",
+        transcription_status="done",
+    )
+    db.add(story)
+    db.flush()
+
+    # 关联人物
+    sp = models.StoryPerson(
+        story_id=story.id,
+        person_id=session.person_id,
+        is_protagonist=True,
+    )
+    db.add(sp)
+
+    # 标记完成并关联故事
     session.status = "completed"
+    session.story_id = story.id
     session.completed_at = datetime.now()
     db.commit()
 
-    # 后台整理故事
+    # 后台三层异步处理
     background_tasks.add_task(compile_interview_stories_task, session_id)
 
     return InterviewCompleteResponse(
         session_id=session_id,
-        stories_created=0,  # 后台处理中
+        story_id=story.id,
+        status="processing",
     )
 
 
 async def compile_interview_stories_task(session_id: str):
-    """后台整理采访为故事"""
+    """后台三层异步处理：提取信息 -> 结构化摘录 -> 叙事润色"""
+    import json as json_lib
+
     db = SessionLocal()
     try:
         session = db.query(models.InterviewSession).filter(
             models.InterviewSession.id == session_id
         ).first()
-        if not session:
+        if not session or not session.story_id:
             return
 
-        # 收集所有转写
-        rounds = db.query(models.InterviewRound).filter(
-            models.InterviewRound.session_id == session_id,
-            models.InterviewRound.transcript.isnot(None),
-            models.InterviewRound.transcript_status == "done"
-        ).order_by(models.InterviewRound.round_index.asc()).all()
+        story = db.query(models.Story).filter(
+            models.Story.id == session.story_id
+        ).first()
+        if not story:
+            return
 
-        all_transcripts = [r.transcript for r in rounds if r.transcript]
-        if not all_transcripts:
-            # 没有有效转写，标记为废弃
-            session.status = "abandoned"
+        # 获取转写内容
+        transcript = story.transcript
+        if not transcript:
+            story.generation_status = "failed"
             db.commit()
             return
 
-        combined_text = "\n\n".join(all_transcripts)
-
-        # 调用豆包分析提取故事
+        # 调用豆包 API
         api_key = os.getenv("ARK_API_KEY", "")
         if not api_key:
-            # 没有 API key，标记为废弃
-            session.status = "abandoned"
+            story.generation_status = "failed"
             db.commit()
             return
 
@@ -1041,78 +1084,103 @@ async def compile_interview_stories_task(session_id: str):
                 base_url="https://ark.cn-beijing.volces.com/api/v3",
             )
 
-            # 获取可用主题
             theme_options = "/".join(THEMES)
 
-            prompt = f"""请从以下采访内容中提取1-3个独立的故事片段，每个片段要有：
-- summary：一句话摘要
-- year：故事发生的大致年份
-- theme：从以下主题选择：{theme_options}
+            # ========== Layer 1: 提取基本信息 (summary, year, theme) ==========
+            prompt_layer1 = f"""从以下采访内容中提取故事的基本信息：
+- summary：一句话故事摘要
+- year：故事发生的大致年份（如果没有明确年份，估算一个）
+- theme：从以下主题选择其一：{theme_options}
 
-只返回JSON数组格式，不要任何其他内容：
-[
-  {{"summary": "摘要1", "year": 1990, "theme": "工作岁月"}},
-  {{"summary": "摘要2", "year": 1985, "theme": "童年往事"}}
-]
+只返回JSON格式，不要任何其他内容：
+{{"summary": "xxx", "year": 1990, "theme": "工作岁月"}}
 
 采访内容：
-{combined_text[:3000]}"""
+{transcript[:3000]}"""
 
             response = client.chat.completions.create(
                 model="ep-20260521233914-gllp4",
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": prompt_layer1}],
                 temperature=0.3,
             )
 
             result_text = response.choices[0].message.content.strip()
 
-            import json as json_lib
-            stories_data = []
+            try:
+                if "```json" in result_text:
+                    result_text = result_text.split("```json")[1].split("```")[0]
+                layer1_data = json_lib.loads(result_text.strip())
+                story.summary = layer1_data.get("summary", "")[:100]
+                story.year = layer1_data.get("year")
+                story.theme = layer1_data.get("theme", "其他")
+            except json_lib.JSONDecodeError as e:
+                print(f"解析Layer1失败: {e}")
+
+            story.generation_status = "generating_layer2"
+            db.commit()
+
+            # ========== Layer 2: 结构化摘录 ==========
+            prompt_layer2 = f"""从以下采访内容中提取结构化摘录：
+
+只返回JSON数组格式，每个摘录包含：
+- aspect：方面（如：人物特点、关键事件、情感表达、重要物品等）
+- content：原始摘录内容
+- emotion：情感标签（感人类/励志类/悲伤类/温馨类/其他）
+
+JSON格式：
+[
+  {{"aspect": "人物特点", "content": "xxx", "emotion": "感人类"}},
+  {{"aspect": "关键事件", "content": "xxx", "emotion": "励志类"}}
+]
+
+采访内容：
+{transcript[:4000]}"""
+
+            response = client.chat.completions.create(
+                model="ep-20260521233914-gllp4",
+                messages=[{"role": "user", "content": prompt_layer2}],
+                temperature=0.5,
+            )
+
+            result_text = response.choices[0].message.content.strip()
 
             try:
                 if "```json" in result_text:
                     result_text = result_text.split("```json")[1].split("```")[0]
-                stories_data = json_lib.loads(result_text.strip())
+                layer2_data = json_lib.loads(result_text.strip())
+                story.structured_snippets = json_lib.dumps(layer2_data)
             except json_lib.JSONDecodeError as e:
-                print(f"解析故事JSON失败: {e}, 内容: {result_text}")
-                return
+                print(f"解析Layer2失败: {e}")
+                story.structured_snippets = "[]"
 
-            # 创建故事记录
-            stories_created = 0
-            for story_data in stories_data:
-                if not story_data.get("summary"):
-                    continue
-
-                story = models.Story(
-                    person_ids=json_lib.dumps([session.person_id]),
-                    summary=story_data.get("summary", "")[:100],
-                    year=story_data.get("year"),
-                    theme=story_data.get("theme", "其他"),
-                    transcript=combined_text[:500],
-                    transcription_status="done",
-                    ai_tag_status="done",
-                )
-                db.add(story)
-                db.flush()
-
-                # 关联人物
-                sp = models.StoryPerson(
-                    story_id=story.id,
-                    person_id=session.person_id,
-                    is_protagonist=True,
-                )
-                db.add(sp)
-                stories_created += 1
-
+            story.generation_status = "generating_layer3"
             db.commit()
 
-            # 如果没有创建任何故事，标记为废弃
-            if stories_created == 0:
-                session.status = "abandoned"
-                db.commit()
+            # ========== Layer 3: 叙事润色 ==========
+            prompt_layer3 = f"""请根据以下采访内容，写一篇叙事性文章（300-500字）：
+- 以第一人称"我"叙述
+- 时间顺序组织
+- 保留细节和情感
+- 结尾可以升华主题
+
+采访内容：
+{transcript[:4000]}"""
+
+            response = client.chat.completions.create(
+                model="ep-20260521233914-gllp4",
+                messages=[{"role": "user", "content": prompt_layer3}],
+                temperature=0.7,
+            )
+
+            story.narrative_polish = response.choices[0].message.content.strip()
+            story.generation_status = "done"
+            story.ai_tag_status = "done"
+            db.commit()
 
         except Exception as e:
-            print(f"整理故事失败: {str(e)}")
+            print(f"三层处理失败: {str(e)}")
+            story.generation_status = "failed"
+            db.commit()
 
     finally:
         db.close()
