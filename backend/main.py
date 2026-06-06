@@ -1120,21 +1120,21 @@ async def compile_interview_stories_task(session_id: str):
             db.commit()
 
             # ========== Layer 2: 结构化摘录 ==========
-            prompt_layer2 = f"""从以下采访内容中提取结构化摘录：
+            prompt_layer2 = f"""以下是一段口述采访的完整对话记录：
+{transcript[:4000]}
 
-只返回JSON数组格式，每个摘录包含：
-- aspect：方面（如：人物特点、关键事件、情感表达、重要物品等）
-- content：原始摘录内容
-- emotion：情感标签（感人类/励志类/悲伤类/温馨类/其他）
-
-JSON格式：
-[
-  {{"aspect": "人物特点", "content": "xxx", "emotion": "感人类"}},
-  {{"aspect": "关键事件", "content": "xxx", "emotion": "励志类"}}
-]
-
-采访内容：
-{transcript[:4000]}"""
+请提取结构化信息，只返回JSON：
+{{
+  "title": "故事标题（10字以内）",
+  "summary": "一句话摘要（20字以内）",
+  "year": 故事发生年份（整数或null）,
+  "decade": "年代描述",
+  "theme": "主题（从现有主题库选）",
+  "time_range": "时间范围描述（如1958年冬天）",
+  "tags": ["标签1", "标签2"],
+  "involved_people": ["提到的人名"],
+  "key_events": ["核心事件1", "核心事件2"]
+}}"""
 
             response = client.chat.completions.create(
                 model="ep-20260521233914-gllp4",
@@ -1148,10 +1148,21 @@ JSON格式：
                 if "```json" in result_text:
                     result_text = result_text.split("```json")[1].split("```")[0]
                 layer2_data = json_lib.loads(result_text.strip())
+                # 更新 story 表各个字段
+                story.title = layer2_data.get("title", "")[:10] if layer2_data.get("title") else None
+                story.summary = layer2_data.get("summary", "")[:20] if layer2_data.get("summary") else None
+                story.year = layer2_data.get("year")
+                story.decade = layer2_data.get("decade")
+                story.theme = layer2_data.get("theme")
+                story.time_range = layer2_data.get("time_range")
+                story.tags = json_lib.dumps(layer2_data.get("tags", [])) if layer2_data.get("tags") else "[]"
+                story.involved_people = json_lib.dumps(layer2_data.get("involved_people", [])) if layer2_data.get("involved_people") else "[]"
+                story.key_events = json_lib.dumps(layer2_data.get("key_events", [])) if layer2_data.get("key_events") else "[]"
+                # structured_snippets 存完整JSON字符串
                 story.structured_snippets = json_lib.dumps(layer2_data)
             except json_lib.JSONDecodeError as e:
                 print(f"解析Layer2失败: {e}")
-                story.structured_snippets = "[]"
+                story.structured_snippets = "{}"
 
             story.generation_status = "generating_layer3"
             db.commit()

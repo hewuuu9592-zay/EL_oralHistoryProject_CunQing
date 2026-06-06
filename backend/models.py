@@ -91,9 +91,14 @@ class Story(Base):
     audio_url = Column(String, nullable=True)
     transcript = Column(Text, nullable=True)
     summary = Column(String, nullable=True)
+    title = Column(String, nullable=True)  # 故事标题（10字以内）
     year = Column(Integer, nullable=True)
     decade = Column(String, nullable=True)
     theme = Column(String, nullable=True)
+    time_range = Column(String, nullable=True)  # 时间范围描述（如1958年冬天）
+    tags = Column(String, nullable=True)  # JSON 数组标签
+    involved_people = Column(String, nullable=True)  # JSON 数组涉及人物
+    key_events = Column(String, nullable=True)  # JSON 数组核心事件
     related_history_id = Column(String, nullable=True)  # 外键关联 historical_events.id
     related_history = Column(String, nullable=True)  # 冗余存储事件标题
     transcription_status = Column(String, default="pending")  # pending, processing, done, failed
