@@ -350,6 +350,7 @@ const InterviewPage = () => {
           try {
             const statusRes = await getStoryGenerationStatus(storyId);
             const status = statusRes.data;
+            console.log('轮询结果:', status);  // 加这行
             setGenStatus(status);
 
             if (status.status === 'done') {
