@@ -34,6 +34,7 @@ const InterviewPage = () => {
   const [saving, setSaving] = useState(false);
   const [storiesCreated, setStoriesCreated] = useState(0);
   const [generatedStories, setGeneratedStories] = useState([]);
+  const [showExitModal, setShowExitModal] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -262,6 +263,31 @@ const InterviewPage = () => {
     }
   };
 
+  // 弹窗确认保存
+  const handleExitModalSave = async () => {
+    if (!session) return;
+    try {
+      setSaving(true);
+      await completeInterview(session.id);
+      navigate(`/person/${personId}`);
+    } catch (e) {
+      console.error('保存失败:', e);
+      alert('保存失败，请重试');
+      setSaving(false);
+    }
+  };
+
+  // 弹窗确认不保存
+  const handleExitModalAbandon = async () => {
+    if (!session) return;
+    try {
+      await abandonInterview(session.id);
+      navigate(`/person/${personId}`);
+    } catch (e) {
+      console.error('放弃失败:', e);
+    }
+  };
+
   // 保存并生成故事
   const handleSave = async () => {
     if (!session) return;
@@ -396,7 +422,7 @@ const InterviewPage = () => {
         {/* 顶部进度 */}
         <div className="bg-white border-b border-[#E5DED3] px-4 py-3 flex-shrink-0">
           <div className="flex items-center justify-between max-w-md mx-auto">
-            <button onClick={() => navigate(`/person/${personId}`)} className="text-[#4A3728] text-sm">
+            <button onClick={() => setShowExitModal(true)} className="text-[#4A3728] text-sm">
               ← 退出
             </button>
             <div className="flex gap-1">
@@ -521,12 +547,20 @@ const InterviewPage = () => {
                     继续下一问 →
                   </button>
                 </div>
-                <button
-                  onClick={handleComplete}
-                  className="w-full py-2 text-gray-400 text-sm"
-                >
-                  结束采访
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowExitModal(true)}
+                    className="flex-1 py-2 text-gray-400 text-sm"
+                  >
+                    放弃
+                  </button>
+                  <button
+                    onClick={handleComplete}
+                    className="flex-1 py-2 text-gray-400 text-sm"
+                  >
+                    结束采访
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -541,6 +575,41 @@ const InterviewPage = () => {
             >
               跳过这个问题 →
             </button>
+          </div>
+        )}
+
+        {/* 退出确认弹窗 */}
+        {showExitModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 m-4 max-w-sm w-full">
+              <h3 className="text-lg font-bold text-[#4A3728] mb-2 text-center">
+                是否保存当前记录？
+              </h3>
+              <p className="text-sm text-gray-500 mb-6 text-center">
+                共 {rounds.length} 轮对话
+              </p>
+              <div className="space-y-3">
+                <button
+                  onClick={handleExitModalSave}
+                  disabled={saving}
+                  className="w-full py-3 bg-[#4A3728] text-white rounded font-bold disabled:opacity-50"
+                >
+                  {saving ? '保存中...' : '保存'}
+                </button>
+                <button
+                  onClick={handleExitModalAbandon}
+                  className="w-full py-3 border border-gray-300 rounded text-gray-600"
+                >
+                  不保存
+                </button>
+                <button
+                  onClick={() => setShowExitModal(false)}
+                  className="w-full py-2 text-gray-400 text-sm"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -572,7 +641,7 @@ const InterviewPage = () => {
 
             <div className="space-y-3">
               <button
-                onClick={handleAbandon}
+                onClick={() => setShowExitModal(true)}
                 className="w-full py-3 border border-gray-300 rounded text-gray-600"
               >
                 放弃这次采访
@@ -587,6 +656,41 @@ const InterviewPage = () => {
             </div>
           </div>
         </div>
+
+        {/* 退出确认弹窗 */}
+        {showExitModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 m-4 max-w-sm w-full">
+              <h3 className="text-lg font-bold text-[#4A3728] mb-2 text-center">
+                是否保存当前记录？
+              </h3>
+              <p className="text-sm text-gray-500 mb-6 text-center">
+                共 {rounds.length} 轮对话
+              </p>
+              <div className="space-y-3">
+                <button
+                  onClick={handleExitModalSave}
+                  disabled={saving}
+                  className="w-full py-3 bg-[#4A3728] text-white rounded font-bold disabled:opacity-50"
+                >
+                  {saving ? '保存中...' : '保存'}
+                </button>
+                <button
+                  onClick={handleExitModalAbandon}
+                  className="w-full py-3 border border-gray-300 rounded text-gray-600"
+                >
+                  不保存
+                </button>
+                <button
+                  onClick={() => setShowExitModal(false)}
+                  className="w-full py-2 text-gray-400 text-sm"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
