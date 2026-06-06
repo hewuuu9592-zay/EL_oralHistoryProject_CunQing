@@ -399,21 +399,12 @@ const FamilyTree = () => {
                 <div className="text-sm text-gray-500 mb-4 flex-1">
                   由 AI 引导，层层追问，生成结构化故事
                 </div>
-                {activeSessions[selectedPerson.id]?.status === 'active' ? (
-                  <button
-                    onClick={() => navigate(`/interview?personId=${selectedPerson.id}`)}
-                    className="w-full py-2 bg-[#5C3D2E] text-white rounded-lg hover:bg-[#4A3125]"
-                  >
-                    继续采访
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => navigate(`/interview?personId=${selectedPerson.id}`)}
-                    className="w-full py-2 bg-[#5C3D2E] text-white rounded-lg hover:bg-[#4A3125]"
-                  >
-                    开始采访
-                  </button>
-                )}
+                <button
+                  onClick={() => navigate(`/interview?personId=${selectedPerson.id}`)}
+                  className="w-full py-2 bg-[#5C3D2E] text-white rounded-lg hover:bg-[#4A3125]"
+                >
+                  开始采访
+                </button>
               </div>
 
               {/* 自由录入卡片 */}
