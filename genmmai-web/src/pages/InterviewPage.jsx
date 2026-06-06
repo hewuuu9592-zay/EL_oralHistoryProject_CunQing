@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getPerson, startInterview, submitInterviewAnswer, getInterviewRoundStatus, getNextQuestion, completeInterview, abandonInterview, getPersonInterviews, getThemes } from '../api';
+import { getPerson, startInterview, submitInterviewAnswer, getInterviewRoundStatus, getNextQuestion, completeInterview, abandonInterview, getPersonInterviews, getThemes, getStoryGenerationStatus, getStory } from '../api';
 import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
 // 录音辅助函数
@@ -36,11 +36,17 @@ const InterviewPage = () => {
   const [generatedStories, setGeneratedStories] = useState([]);
   const [showExitModal, setShowExitModal] = useState(false);
 
+  // 生成进度相关状态
+  const [currentStoryId, setCurrentStoryId] = useState(null);
+  const [genStatus, setGenStatus] = useState(null); // { status, has_layer2, has_layer3 }
+  const [pollTimeout, setPollTimeout] = useState(false);
+
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
   const scrollRef = useRef(null);
   const pollTimerRef = useRef(null);
+  const genPollTimerRef = useRef(null);
 
   // 加载人物信息
   useEffect(() => {
@@ -293,23 +299,57 @@ const InterviewPage = () => {
     if (!session) return;
 
     setSaving(true);
+    setPollTimeout(false);
     try {
-      await completeInterview(session.id);
+      // 调用 complete 接口，获取 story_id
+      const res = await completeInterview(session.id);
+      const storyId = res.data?.story_id;
+      if (!storyId) {
+        throw new Error('创建故事失败');
+      }
+      setCurrentStoryId(storyId);
 
-      // 等待一下再查询
-      await new Promise(r => setTimeout(r, 2000));
+      // 开始轮询生成状态
+      const startPolling = async () => {
+        const startTime = Date.now();
+        const maxDuration = 3 * 60 * 1000; // 3分钟超时
 
-      // 查询该人物的采访记录
-      const interviewsRes = await getPersonInterviews(personId);
-      const sessions = interviewsRes.data || [];
-      const latestSession = sessions.find(s => s.session_id === session.id);
+        const poll = async () => {
+          if (Date.now() - startTime > maxDuration) {
+            setPollTimeout(true);
+            return;
+          }
 
-      setStoriesCreated(latestSession?.stories_created || 0);
-      setStage('done');
+          try {
+            const statusRes = await getStoryGenerationStatus(storyId);
+            const status = statusRes.data;
+            setGenStatus(status);
+
+            if (status.status === 'done') {
+              // 完成，获取故事详情
+              const storyRes = await getStory(storyId);
+              setGeneratedStories([storyRes.data]);
+              setStage('done');
+            } else if (status.status === 'failed') {
+              // 失败，也进入完成页面
+              setStage('done');
+            } else {
+              // 继续轮询
+              genPollTimerRef.current = setTimeout(poll, 3000);
+            }
+          } catch (e) {
+            console.error('轮询失败:', e);
+            pollTimerRef.current = setTimeout(poll, 3000);
+          }
+        };
+
+        poll();
+      };
+
+      startPolling();
     } catch (e) {
       console.error('保存失败:', e);
       alert('保存失败，请重试');
-    } finally {
       setSaving(false);
     }
   };
@@ -325,6 +365,7 @@ const InterviewPage = () => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (genPollTimerRef.current) clearTimeout(genPollTimerRef.current);
       // 如果 session 存在但没有任何轮次，自动放弃
       if (session && session.rounds?.length === 0) {
         abandonInterview(session.id).catch(console.error);
@@ -618,79 +659,126 @@ const InterviewPage = () => {
 
   // ========== 阶段三：完成确认 ==========
   if (stage === 'completing') {
+    // 轮询超时，显示提示
+    if (pollTimeout) {
+      return (
+        <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
+          <div className="bg-white border-b border-[#E5DED3] px-4 py-4 text-center">
+            <h1 className="text-lg font-bold text-[#4A3728]">生成需要一点时间</h1>
+          </div>
+          <div className="flex-1 p-4 flex items-center justify-center">
+            <div className="text-center text-gray-500">
+              <p className="mb-4">故事已保存，稍后可在故事库查看</p>
+              <button
+                onClick={() => navigate('/')}
+                className="py-2 px-6 bg-[#4A3728] text-white rounded"
+              >
+                返回主页
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 生成中状态
+    const isLayer1Done = saving || genStatus?.status === 'pending';
+    const isLayer2Done = genStatus?.has_layer2;
+    const isLayer3Done = genStatus?.has_layer3;
+
     return (
       <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
         <div className="bg-white border-b border-[#E5DED3] px-4 py-4 text-center">
-          <h1 className="text-lg font-bold text-[#4A3728]">采访完成</h1>
+          <h1 className="text-lg font-bold text-[#4A3728]">正在生成故事</h1>
         </div>
 
         <div className="flex-1 p-4 overflow-auto">
           <div className="max-w-sm mx-auto">
+            {/* 采访摘要 */}
             <div className="bg-white rounded-xl p-4 shadow-sm mb-6">
-              <p className="text-center text-[#8B7355] mb-4">
+              <p className="text-center text-[#8B7355] mb-2">
                 共 {rounds.length} 轮对话
               </p>
-              <div className="space-y-2">
-                {rounds.map((r, i) => (
-                  <div key={i} className="text-sm text-gray-600">
-                    <span className="text-gray-400">{i + 1}.</span> {r.question}
-                  </div>
-                ))}
+              <p className="text-center text-sm text-gray-400">
+                主题：{session?.topic_hint || '未指定'}
+              </p>
+            </div>
+
+            {/* 进度指示器 */}
+            <div className="bg-white rounded-xl p-4 shadow-sm mb-6">
+              {/* 阶段1：对话记录 */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-sm ${
+                  isLayer1Done ? 'bg-green-500' : 'bg-gray-300'
+                }`}>
+                  {isLayer1Done ? '✓' : '1'}
+                </div>
+                <span className="text-sm text-gray-600">对话记录已保存</span>
               </div>
+
+              {/* 阶段2：结构化信息 */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-sm ${
+                  isLayer2Done ? 'bg-green-500' : 'bg-orange-400'
+                }`}>
+                  {isLayer2Done ? '✓' : '2'}
+                </div>
+                <span className="text-sm text-gray-600">
+                  {isLayer2Done ? '结构化信息已提取' : 'AI 正在提炼结构化信息...'}
+                </span>
+              </div>
+              {isLayer2Done && genStatus && (
+                <div className="ml-9 text-xs text-gray-500 mb-4">
+                  标题：{generatedStories[0]?.title || '未生成'}
+                </div>
+              )}
+
+              {/* 阶段3：叙事文章 */}
+              <div className="flex items-center gap-3">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-sm ${
+                  isLayer3Done ? 'bg-green-500' : 'bg-gray-300'
+                }`}>
+                  {isLayer3Done ? '✓' : '3'}
+                </div>
+                <span className="text-sm text-gray-600">
+                  {isLayer3Done ? '叙事文章已生成' : 'AI 正在撰写故事文章...'}
+                </span>
+              </div>
+              {isLayer3Done && generatedStories[0]?.narrative_polish && (
+                <div className="ml-9 text-xs text-gray-500 mt-2">
+                  {generatedStories[0].narrative_polish.slice(0, 100)}...
+                </div>
+              )}
             </div>
 
-            <div className="space-y-3">
-              <button
-                onClick={() => setShowExitModal(true)}
-                className="w-full py-3 border border-gray-300 rounded text-gray-600"
-              >
-                放弃这次采访
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="w-full py-3 bg-[#4A3728] text-white rounded font-bold disabled:opacity-50"
-              >
-                {saving ? 'AI 正在整理故事...' : '保存并生成故事'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 退出确认弹窗 */}
-        {showExitModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl p-6 m-4 max-w-sm w-full">
-              <h3 className="text-lg font-bold text-[#4A3728] mb-2 text-center">
-                是否保存当前记录？
-              </h3>
-              <p className="text-sm text-gray-500 mb-6 text-center">
-                共 {rounds.length} 轮对话
-              </p>
+            {/* 完成按钮（仅完成后显示） */}
+            {isLayer3Done && (
               <div className="space-y-3">
+                <div className="text-center text-green-600 font-bold mb-4">故事已生成</div>
+                <div className="bg-white rounded-xl p-4 shadow-sm mb-4">
+                  <div className="text-lg font-bold text-[#4A3728] text-center mb-2">
+                    {generatedStories[0]?.title || '故事'}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {generatedStories[0]?.narrative_polish?.slice(0, 100)}...
+                  </div>
+                </div>
                 <button
-                  onClick={handleExitModalSave}
-                  disabled={saving}
-                  className="w-full py-3 bg-[#4A3728] text-white rounded font-bold disabled:opacity-50"
+                  onClick={() => navigate('/story/' + currentStoryId)}
+                  className="w-full py-3 bg-[#4A3728] text-white rounded font-bold"
                 >
-                  {saving ? '保存中...' : '保存'}
+                  查看完整故事
                 </button>
                 <button
-                  onClick={handleExitModalAbandon}
+                  onClick={() => navigate('/')}
                   className="w-full py-3 border border-gray-300 rounded text-gray-600"
                 >
-                  不保存
-                </button>
-                <button
-                  onClick={() => setShowExitModal(false)}
-                  className="w-full py-2 text-gray-400 text-sm"
-                >
-                  取消
+                  返回主页
                 </button>
               </div>
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     );
   }
