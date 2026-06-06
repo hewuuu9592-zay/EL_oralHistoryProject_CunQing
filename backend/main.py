@@ -1020,6 +1020,9 @@ async def compile_interview_stories_task(session_id: str):
 
         all_transcripts = [r.transcript for r in rounds if r.transcript]
         if not all_transcripts:
+            # 没有有效转写，标记为废弃
+            session.status = "abandoned"
+            db.commit()
             return
 
         combined_text = "\n\n".join(all_transcripts)
@@ -1027,6 +1030,9 @@ async def compile_interview_stories_task(session_id: str):
         # 调用豆包分析提取故事
         api_key = os.getenv("ARK_API_KEY", "")
         if not api_key:
+            # 没有 API key，标记为废弃
+            session.status = "abandoned"
+            db.commit()
             return
 
         try:
@@ -1100,6 +1106,11 @@ async def compile_interview_stories_task(session_id: str):
 
             db.commit()
 
+            # 如果没有创建任何故事，标记为废弃
+            if stories_created == 0:
+                session.status = "abandoned"
+                db.commit()
+
         except Exception as e:
             print(f"整理故事失败: {str(e)}")
 
@@ -1125,9 +1136,10 @@ def abandon_interview(session_id: str, db: Session = Depends(get_db)):
 @app.get("/persons/{person_id}/interviews", response_model=List[InterviewSessionBrief])
 def get_person_interviews(person_id: str, db: Session = Depends(get_db)):
     """获取该人物的所有采访记录"""
-    # 过滤：排除 round_count=0 且 status != 'active' 的无效记录
+    # 过滤：排除无效记录（0轮、非active、abandoned）
     sessions = db.query(models.InterviewSession).filter(
         models.InterviewSession.person_id == person_id,
+        models.InterviewSession.status != "abandoned",
         ~(
             (models.InterviewSession.round_count == 0) & (models.InterviewSession.status != "active")
         )
