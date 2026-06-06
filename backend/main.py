@@ -2172,17 +2172,11 @@ def get_story_generation_status(story_id: str, db: Session = Depends(get_db)):
         )
 
     status = story.generation_status or "pending"
-    has_layer2 = status in ("generating_layer3", "done") or (
-        story.structured_snippets is not None and story.structured_snippets != ""
-    )
-    has_layer3 = status == "done" or (
-        story.narrative_polish is not None and story.narrative_polish != ""
-    )
 
     return GenerationStatusResponse(
         status=status,
-        has_layer2=has_layer2,
-        has_layer3=has_layer3,
+        has_layer2=bool(story.structured_snippets),
+        has_layer3=bool(story.narrative_polish),
     )
 
 

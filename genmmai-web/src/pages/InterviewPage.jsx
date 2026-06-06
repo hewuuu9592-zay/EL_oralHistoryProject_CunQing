@@ -183,7 +183,7 @@ const InterviewPage = () => {
 
   // 提交回答
   const handleSubmit = async () => {
-    if (!audioBlob || !session) return;
+    if (!audioBlob || !session?.id) return;  // 加 ?.id 检查
 
     setSubmitting(true);
     try {
@@ -283,6 +283,7 @@ const InterviewPage = () => {
   // 结束采访
   const handleComplete = async () => {
     setStage('completing');
+    await handleSave();
   };
 
   // 放弃采访
@@ -323,6 +324,7 @@ const InterviewPage = () => {
 
   // 保存并生成故事
   const handleSave = async () => {
+    console.log('handleSave called, session:', session)
     if (!session) return;
 
     setSaving(true);
@@ -330,7 +332,10 @@ const InterviewPage = () => {
     try {
       // 调用 complete 接口，获取 story_id
       const res = await completeInterview(session.id);
+      console.log('complete res:', res.data);
       const storyId = res.data?.story_id;
+      console.log('storyId:', storyId);
+      console.log('story_id:', storyId, 'res.data:', res.data);
       if (!storyId) {
         throw new Error('创建故事失败');
       }
