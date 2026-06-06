@@ -15,6 +15,7 @@ from openai import OpenAI
 import models
 from database import SessionLocal, engine, get_db
 from pydantic import BaseModel
+from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
@@ -606,7 +607,7 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
                 base_url="https://ark.cn-beijing.volces.com/api/v3",
             )
 
-            prompt = f"""你是一个温暖的家族记忆整理师。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：。{pronoun}已经讲述了这些主题的故事：{existing_str}。请为'{suggested_theme}'这个主题，生成一个温暖具体的引导问题。可以结合{pronoun}亲历的历史背景，例如可以问'{pronoun}经历某事件时在做什么'或'某事件后{pronoun}的生活发生了什么变化'。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身，不要任何前缀。"""
+            prompt = f"""你是一位温柔、耐心、善于倾听的家庭回忆助手，正在陪伴一位老年人回忆往事。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：。{pronoun}已经讲述了这些主题的故事：{existing_str}。请为'{suggested_theme}'这个主题，生成一个温暖具体的引导问题。可以结合{pronoun}亲历的历史背景，例如可以问'{pronoun}经历某事件时在做什么'或'某事件后{pronoun}的生活发生了什么变化'。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身，不要任何前缀。"""
 
             response = client.chat.completions.create(
                 model="ep-20260521233914-gllp4",
@@ -712,7 +713,7 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
     existing_str = "、".join(existing_themes) if existing_themes else "暂无"
     pronoun = "她" if person.gender == "女" else "他"
 
-    # 生成 prompt 时加入用户偏好主题
+    # 生成 prompt 时加入用户偏好主题-prompt1
     theme_constraint = f"今天用户希望聊的主题是：{preferred_str}，请优先围绕这些主题生成引导问题。" if preferred_str else ""
 
     if api_key:
@@ -722,7 +723,7 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
                 base_url="https://ark.cn-beijing.volces.com/api/v3",
             )
 
-            prompt = f"""你是一位温柔的家族记忆采访者。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：{events_str}。{pronoun}已经讲述了这些主题的故事：{existing_str}。{theme_constraint}请为'{suggested_theme}'这个主题，生成第一个温暖具体的引导问题。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身。"""
+            prompt = f"""你是一位温柔的擅长层层递进地、以令人舒服的方式提问的家族口述史采访者。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：{events_str}。{pronoun}已经讲述了这些主题的故事：{existing_str}。{theme_constraint}请为'{suggested_theme}'这个主题，生成第一个温暖具体的引导问题。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身。"""
 
             response = client.chat.completions.create(
                 model="ep-20260521233914-gllp4",
@@ -928,7 +929,7 @@ def get_next_question(session_id: str, request: dict, db: Session = Depends(get_
     current_index = session.round_count
     should_end = current_index >= 5
 
-    # 调用豆包生成追问
+    # 调用豆包生成追问-prompt2
     api_key = os.getenv("ARK_API_KEY", "")
     question = None
 
@@ -944,14 +945,26 @@ def get_next_question(session_id: str, request: dict, db: Session = Depends(get_
                 base_url="https://ark.cn-beijing.volces.com/api/v3",
             )
 
-            prompt = f"""你是一位温柔的家族记忆采访者。
-以下是对话历史：
-{history}
+            prompt = f"""你是一位温柔的、擅长层层递进地、以令人舒服的方式提问的家族口述史采访者，正在陪伴一位老年人回忆往事。
+                【核心原则】
+                1. 像邻居家懂事的孩子一样聊天，绝不是记者采访。
+                2. 优先顺着老人刚讲的内容，自然追问细节和感受，让对话像流水一样自然。
+                3. 永远不要连续抛出多个问题，一次只问一个。
+                4. 察觉到老人情绪低落或明确表示不想说时，绝不追问，转而安抚或自然岔开话题。
+                5. 偶尔可以分享一点自己的“感受”（比如“听起来那一定很不容易”），让老人感觉你在认真听。
 
-{pronoun}刚才说：{latest_transcript}
+                【你需要做的事情】
+                根据当前对话历史，判断现在应该：
+                - 顺着故事追问一个细节（主线程）
+                - 还是在老人沉默、卡壳、情绪回避时，温和地接上话（守护线程）
+                
+                以下是对话历史：
+                {history}
 
-请根据他/她的回答，生成一个有针对性的追问。要求：抓住回答中最有价值的细节深挖，口语化，像晚辈在追问长辈，不超过35字。如果话题已经充分展开（超过3轮），可以温和地引向新角度并设置should_end=true。
-直接返回JSON格式：{{"question": "追问内容", "should_end": true/false}}，不要任何前缀。"""
+                {pronoun}刚才说：{latest_transcript}
+
+                请根据他/她的回答，生成一个有针对性的追问。要求：抓住回答中最有价值的细节深挖，要理解老人的讲述偏好，口语化，像晚辈在追问长辈，不超过35字。如果话题已经充分展开（超过3轮），可以温和地引向新角度并设置should_end=true。
+                直接返回JSON格式：{{"question": "追问内容", "should_end": true/false}}，不要任何前缀。"""
 
             response = client.chat.completions.create(
                 model="ep-20260521233914-gllp4",
