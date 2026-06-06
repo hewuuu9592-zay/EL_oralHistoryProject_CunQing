@@ -432,10 +432,12 @@ const FamilyTree = () => {
         )}
 
         {/* 统计 */}
-        <div className="mt-8 text-center text-sm text-gray-400">
-          已记录 {totalStories} 个故事 · {persons.length} 位成员 ·{' '}
-          {Object.keys(activeSessions).length} 次采访
-        </div>
+        {sidebarExpanded && (
+          <div className="mt-8 text-center text-sm text-gray-400">
+            已记录 {totalStories} 个故事 · {persons.length} 位成员 ·{' '}
+            {Object.keys(activeSessions).length} 次采访
+          </div>
+        )}
       </div>
     )
   }
@@ -477,7 +479,7 @@ const FamilyTree = () => {
                   : 'text-[#4A3728] hover:bg-[#E8DFD0]'
               }`}
             >
-              <span className="text-sm">{item.label}</span>
+              <span className="text-sm">{sidebarExpanded ? item.label : ''}</span>
             </button>
           ))}
         </div>
@@ -499,9 +501,11 @@ const FamilyTree = () => {
             {navItems.find(n => n.key === activeTab)?.label}
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">
-              {persons.length}位成员 · {totalStories}个故事
-            </span>
+            {sidebarExpanded && (
+              <span className="text-sm text-gray-500">
+                {persons.length}位成员 · {totalStories}个故事
+              </span>
+            )}
             <button
               onClick={() => navigate('/settings')}
               className="text-sm text-[#8B7355] hover:text-[#5C3D2E]"
