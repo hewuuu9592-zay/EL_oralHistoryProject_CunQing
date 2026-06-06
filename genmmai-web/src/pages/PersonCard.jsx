@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   getPerson, getPersonStories, getPersonStoryThemes, getPersonRelations,
   updatePerson, getRelationships, deleteRelationship, createRelationship,
-  getPersons, getPersonInterviews, getSessionRounds
+  getPersons, getPersonInterviews, getSessionRounds, deleteInterview
 } from '../api';
 import MigrationMapTab from './MigrationMapTab';
 // ========== 主题颜色映射 ==========
@@ -499,6 +499,7 @@ const PersonCard = () => {
   const [selectedRelated, setSelectedRelated] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [allRelationships, setAllRelationships] = useState([]); // 全量关系
+  const [deleteSessionId, setDeleteSessionId] = useState(null); // 删除确认弹窗
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
     name: '',
@@ -905,6 +906,16 @@ const PersonCard = () => {
                           >
                             {interview.story_id ? '查看完整故事' : '故事生成中'}
                           </button>
+                          {/* 删除按钮 */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteSessionId(interview.session_id);
+                            }}
+                            className="w-full mt-2 py-2 text-red-500 text-sm hover:underline"
+                          >
+                            删除采访记录
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1090,6 +1101,56 @@ const PersonCard = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 删除确认弹窗 */}
+      {deleteSessionId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 m-4 max-w-sm w-full">
+            <h3 className="text-lg font-bold text-[#4A3728] mb-2 text-center">
+              确定删除这条采访记录？
+            </h3>
+            <p className="text-sm text-gray-500 mb-6 text-center">
+              删除后无法恢复，关联的故事也会被删除
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={async () => {
+                  try {
+                    await deleteInterview(deleteSessionId);
+                    // 刷新采访记录
+                    setExpandedInterview(null);
+                    const res = await getPersonInterviews(id);
+                    const interviewsData = res.data || [];
+                    const interviewsWithRounds = await Promise.all(
+                      interviewsData.map(async (interview) => {
+                        try {
+                          const roundsRes = await getSessionRounds(interview.session_id);
+                          return { ...interview, rounds: roundsRes.data || [] };
+                        } catch (e) {
+                          return { ...interview, rounds: [] };
+                        }
+                      })
+                    );
+                    setInterviews(interviewsWithRounds);
+                  } catch (err) {
+                    console.error('删除失败:', err);
+                  }
+                  setDeleteSessionId(null);
+                }}
+                className="w-full py-3 bg-red-500 text-white rounded font-bold"
+              >
+                确认删除
+              </button>
+              <button
+                onClick={() => setDeleteSessionId(null)}
+                className="w-full py-3 border border-gray-300 rounded text-gray-600"
+              >
+                取消
+              </button>
+            </div>
           </div>
         </div>
       )}

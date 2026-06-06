@@ -1259,6 +1259,38 @@ def abandon_interview(session_id: str, db: Session = Depends(get_db)):
     return {"message": "采访已放弃"}
 
 
+@app.delete("/interviews/{session_id}")
+def delete_interview(session_id: str, db: Session = Depends(get_db)):
+    """删除采访记录及关联故事"""
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.id == session_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="采访会话不存在")
+
+    # 删除关联的故事（如果有）
+    if session.story_id:
+        # 删除 story_persons 关联
+        db.query(models.StoryPerson).filter(
+            models.StoryPerson.story_id == session.story_id
+        ).delete()
+        # 删除故事
+        db.query(models.Story).filter(
+            models.Story.id == session.story_id
+        ).delete()
+
+    # 删除所有轮次
+    db.query(models.InterviewRound).filter(
+        models.InterviewRound.session_id == session_id
+    ).delete()
+
+    # 删除会话
+    db.delete(session)
+    db.commit()
+
+    return {"message": "采访记录已删除"}
+
+
 @app.get("/persons/{person_id}/interviews", response_model=List[InterviewSessionBrief])
 def get_person_interviews(person_id: str, db: Session = Depends(get_db)):
     """获取该人物的所有采访记录"""
@@ -2109,6 +2141,14 @@ def get_story_generation_status(story_id: str, db: Session = Depends(get_db)):
     story = db.query(models.Story).filter(models.Story.id == story_id).first()
     if not story:
         raise HTTPException(status_code=404, detail="故事不存在")
+
+    # 没有 source_session_id 的是旧故事（手动录入），直接返回完成状态
+    if not story.source_session_id:
+        return GenerationStatusResponse(
+            status="done",
+            has_layer2=True,
+            has_layer3=True,
+        )
 
     status = story.generation_status or "pending"
     has_layer2 = status in ("generating_layer3", "done") or (
