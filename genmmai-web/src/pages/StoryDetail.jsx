@@ -407,10 +407,61 @@ const StoryDetail = () => {
 
           {/* Tab2: 对话记录（第一层） */}
           {activeTab === 'transcript' && (
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <p className="font-serif text-[#4A3728] text-base leading-relaxed whitespace-pre-wrap">
-                {story.transcript || '暂无对话记录'}
-              </p>
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              {/* 非采访录入的故事 */}
+              {!story.source_session_id ? (
+                <p className="font-serif text-[#4A3728] text-base leading-relaxed whitespace-pre-wrap">
+                  {story.transcript || '暂无对话记录'}
+                </p>
+              ) : (
+                /* 按【第X轮】拆分显示 */
+                <div className="space-y-4">
+                  {story.transcript?.split('【第').filter(Boolean).map((roundText, i) => {
+                    // 解析轮次
+                    const roundMatch = roundText.match(/^(\d+)轮】/);
+                    const roundNum = roundMatch ? roundMatch[1] : i + 1;
+                    const content = roundText.replace(/^\d+轮】/, '');
+
+                    // 尝试拆分问题和回答
+                    let question = '';
+                    let answer = content;
+                    if (content.includes('\n')) {
+                      const parts = content.split('\n');
+                      question = parts[0];
+                      answer = parts.slice(1).join('\n');
+                    }
+
+                    return (
+                      <div key={i} className="pb-4 border-b border-gray-100 last:border-0">
+                        <div className="text-xs text-gray-400 mb-2">第 {roundNum} 轮</div>
+
+                        {/* AI 问题气泡（左侧，灰色） */}
+                        {question && (
+                          <div className="flex justify-start mb-3">
+                            <div className="bg-gray-100 rounded-2xl px-4 py-2 max-w-[80%]">
+                              <p className="text-sm text-gray-700">{question}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 老人回答区（右侧，暖色） */}
+                        {answer && (
+                          <div className="flex justify-end">
+                            <div className="bg-[#FFF8EE] rounded-2xl px-4 py-2 max-w-[80%]">
+                              {/* 音频播放器（如果有） */}
+                              {/* 转写文字 */}
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{answer}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {!story.transcript && (
+                    <p className="text-gray-400 text-center py-8">暂无对话记录</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
