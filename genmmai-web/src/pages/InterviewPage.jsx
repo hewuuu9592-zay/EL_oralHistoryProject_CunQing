@@ -833,9 +833,9 @@ const InterviewPage = () => {
         <div className="flex-1 p-4 flex flex-col items-center justify-center">
           <div className="text-4xl mb-4">✨</div>
           <h1 className="text-xl font-bold text-[#4A3728] mb-2">采访已完成</h1>
-          <p className="text-[#8B7355] mb-6">
+          {/* <p className="text-[#8B7355] mb-6">
             本次采访生成了 {storiesCreated} 个故事
-          </p>
+          </p> */}
 
           <button
             onClick={() => navigate(`/person/${personId}`)}
