@@ -130,6 +130,7 @@ class InterviewSession(Base):
     status = Column(String, default="active")  # active/completed/abandoned
     topic_hint = Column(String, nullable=True)  # 本次采访的主题方向（用户输入）
     topic = Column(String, nullable=True)  # 本次采访的主题（AI生成）
+    chapter_id = Column(String, nullable=True)  # 关联的章节ID
     story_id = Column(String, nullable=True)  # 采访完成后关联生成的故事id
     round_count = Column(Integer, default=0)  # 实际轮次数
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

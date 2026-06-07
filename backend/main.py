@@ -674,99 +674,139 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
         db.delete(es)
     db.commit()
 
-    # 获取用户偏好的主题
-    preferred_themes = request.get("preferred_themes", [])
-    preferred_str = "、".join(preferred_themes) if preferred_themes else ""
+    # 获取 chapter_id
+    chapter_id = request.get("chapter_id")
 
-    # 分析该人物已有故事的空白主题
-    sp_records = db.query(models.StoryPerson).filter(
-        models.StoryPerson.person_id == person_id
-    ).all()
-    story_ids = [sp.story_id for sp in sp_records]
-
-    existing_themes = []
-    missing_themes = []
-    if story_ids:
-        stories = db.query(models.Story.theme).filter(
-            models.Story.id.in_(story_ids)
-        ).all()
-        existing_themes = [s.theme for s in stories if s.theme]
-        missing_themes = [t for t in THEMES if t not in existing_themes]
-
-    # 确定本次采访的主题方向：优先从用户选择的主题中选
-    if preferred_themes:
-        # 从用户选择的主题中找一个缺失的，或随机选一个
-        candidate_themes = [t for t in preferred_themes if t in missing_themes] or preferred_themes
-        suggested_theme = candidate_themes[0]
-    elif missing_themes:
-        suggested_theme = missing_themes[0]
-    elif existing_themes:
-        suggested_theme = random.choice(existing_themes)
-    else:
-        suggested_theme = random.choice(THEMES)
-    topic_hint = suggested_theme
-
-    # 生成第一个引导问题（结合历史语境）
-    api_key = os.getenv("ARK_API_KEY", "")
     question = None
-    birth_year = person.birth_year or 1950
+    topic_hint = None
 
-    # 查询生命跨度内的重大历史事件
-    current_year = datetime.now().year
-    major_events = db.query(models.HistoricalEvent).filter(
-        models.HistoricalEvent.year >= birth_year,
-        models.HistoricalEvent.year <= current_year,
-        models.HistoricalEvent.importance >= 2
-    ).order_by(models.HistoricalEvent.year.asc()).all()
-    events_list = [f"{e.year}年{e.title}" for e in major_events][:8]
-    events_str = "、".join(events_list) if events_list else "暂无重大历史事件"
+    # 如果有 chapter_id，使用章节预设问题
+    if chapter_id:
+        chapter = db.query(models.AutobiographyChapter).filter(
+            models.AutobiographyChapter.id == chapter_id
+        ).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="章节不存在")
 
-    existing_str = "、".join(existing_themes) if existing_themes else "暂无"
-    pronoun = "她" if person.gender == "女" else "他"
+        # 读取章节的 opening_questions
+        opening_questions = json.loads(chapter.opening_questions) if chapter.opening_questions else []
+        if opening_questions:
+            question = opening_questions[0]
+        else:
+            question = f"{person.name}给我们讲讲{chapter.title}的故事吧？"
 
-    # 生成 prompt 时加入用户偏好主题-prompt1
-    theme_constraint = f"今天用户希望聊的主题是：{preferred_str}，请优先围绕这些主题生成引导问题。" if preferred_str else ""
+        topic_hint = chapter.title
 
-    if api_key:
-        try:
-            client = OpenAI(
-                api_key=api_key,
-                base_url="https://ark.cn-beijing.volces.com/api/v3",
+        # 更新人物章节状态为 in_progress
+        pc = db.query(models.PersonChapter).filter(
+            models.PersonChapter.person_id == person_id,
+            models.PersonChapter.chapter_id == chapter_id,
+        ).first()
+        if pc:
+            pc.status = "in_progress"
+            pc.updated_at = datetime.utcnow()
+        else:
+            pc = models.PersonChapter(
+                person_id=person_id,
+                chapter_id=chapter_id,
+                status="in_progress",
             )
+            db.add(pc)
+        db.commit()
+    else:
+        # 原有逻辑：AI生成第一问
+        # 获取用户偏好的主题
+        preferred_themes = request.get("preferred_themes", [])
+        preferred_str = "、".join(preferred_themes) if preferred_themes else ""
 
-            prompt = f"""你是一位温柔的擅长层层递进地、以令人舒服的方式提问的家族口述史采访者。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：{events_str}。{pronoun}已经讲述了这些主题的故事：{existing_str}。{theme_constraint}请为'{suggested_theme}'这个主题，生成第一个温暖具体的引导问题。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身。"""
+        # 分析该人物已有故事的空白主题
+        sp_records = db.query(models.StoryPerson).filter(
+            models.StoryPerson.person_id == person_id
+        ).all()
+        story_ids = [sp.story_id for sp in sp_records]
 
-            response = client.chat.completions.create(
-                model="ep-20260521233914-gllp4",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-            )
+        existing_themes = []
+        missing_themes = []
+        if story_ids:
+            stories = db.query(models.Story.theme).filter(
+                models.Story.id.in_(story_ids)
+            ).all()
+            existing_themes = [s.theme for s in stories if s.theme]
+            missing_themes = [t for t in THEMES if t not in existing_themes]
 
-            question = response.choices[0].message.content.strip()
-            if question.startswith('"') and question.endswith('"'):
-                question = question[1:-1]
+        # 确定本次采访的主题方向：优先从用户选择的主题中选
+        if preferred_themes:
+            candidate_themes = [t for t in preferred_themes if t in missing_themes] or preferred_themes
+            suggested_theme = candidate_themes[0]
+        elif missing_themes:
+            suggested_theme = missing_themes[0]
+        elif existing_themes:
+            suggested_theme = random.choice(existing_themes)
+        else:
+            suggested_theme = random.choice(THEMES)
+        topic_hint = suggested_theme
 
-        except Exception as e:
-            print(f"豆包 API 调用失败: {str(e)}")
-            question = None
+        # 生成第一个引导问题（结合历史语境）
+        api_key = os.getenv("ARK_API_KEY", "")
+        birth_year = person.birth_year or 1950
 
-    if not question:
-        fallback_qs = {
-            "家乡记忆": f"{person.name}给我们讲讲您小时候的故事吧？",
-            "工作岁月": f"{person.name}您年轻时候有什么难忘的工作经历？",
-            "爱情婚姻": f"{person.name}您是怎么认识家人的？",
-            "历史亲历": f"{person.name}您还记得那些年经历过的特别的事吗？",
-            "家族传承": f"{person.name}家里有什么传统想传给我们的？",
-            "童年往事": f"{person.name}您小时候有什么有趣的故事？",
-            "其他": f"{person.name}您有什么想留给后代的故事吗？",
-        }
-        question = fallback_qs.get(suggested_theme, f"{person.name}给我们讲讲您的故事吧？")
+        # 查询生命跨度内的重大历史事件
+        current_year = datetime.now().year
+        major_events = db.query(models.HistoricalEvent).filter(
+            models.HistoricalEvent.year >= birth_year,
+            models.HistoricalEvent.year <= current_year,
+            models.HistoricalEvent.importance >= 2
+        ).order_by(models.HistoricalEvent.year.asc()).all()
+        events_list = [f"{e.year}年{e.title}" for e in major_events][:8]
+        events_str = "、".join(events_list) if events_list else "暂无重大历史事件"
+
+        existing_str = "、".join(existing_themes) if existing_themes else "暂无"
+        pronoun = "她" if person.gender == "女" else "他"
+
+        # 生成 prompt 时加入用户偏好主题-prompt1
+        theme_constraint = f"今天用户希望聊的主题是：{preferred_str}，请优先围绕这些主题生成引导问题。" if preferred_str else ""
+
+        if api_key:
+            try:
+                client = OpenAI(
+                    api_key=api_key,
+                    base_url="https://ark.cn-beijing.volces.com/api/v3",
+                )
+
+                prompt = f"""你是一位温柔的擅长层层递进地、以令人舒服的方式提问的家族口述史采访者。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：{events_str}。{pronoun}已经讲述了这些主题的��事��{existing_str}。{theme_constraint}请为'{suggested_theme}'这个主题，生成第一个温暖具体的引导问题。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身。"""
+
+                response = client.chat.completions.create(
+                    model="ep-20260521233914-gllp4",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                )
+
+                question = response.choices[0].message.content.strip()
+                if question.startswith('"') and question.endswith('"'):
+                    question = question[1:-1]
+
+            except Exception as e:
+                print(f"豆包 API 调用失败: {str(e)}")
+                question = None
+
+        if not question:
+            fallback_qs = {
+                "家乡记忆": f"{person.name}给我们讲讲您小时候的故事吧？",
+                "工作岁月": f"{person.name}您年轻时候有什么难忘的工作经历？",
+                "爱情婚姻": f"{person.name}您是怎么认识家人的？",
+                "历史亲历": f"{person.name}您还记得那些年经历过的特别的事吗？",
+                "家族传承": f"{person.name}家里有什么传统想传给我们的？",
+                "童年往事": f"{person.name}您小时候有什么有趣的故事？",
+                "其他": f"{person.name}您有什么想留给后代的故事吗？",
+            }
+            question = fallback_qs.get(suggested_theme, f"{person.name}给我们讲讲您的故事吧？")
 
     # 创建采访会话
     session = models.InterviewSession(
         person_id=person_id,
         status="active",
         topic_hint=topic_hint,
+        chapter_id=chapter_id,
         round_count=1,
     )
     db.add(session)
@@ -958,6 +998,15 @@ def get_next_question(session_id: str, request: dict, db: Session = Depends(get_
     ).first()
     pronoun = "她" if person and person.gender == "女" else "他"
 
+    # 如果有 chapter_id，获取章节标题作为上下文
+    chapter_context = ""
+    if session.chapter_id:
+        chapter = db.query(models.AutobiographyChapter).filter(
+            models.AutobiographyChapter.id == session.chapter_id
+        ).first()
+        if chapter:
+            chapter_context = f"本次采访的主题是'{chapter.title}'，请围绕这个主题生成追问，不要偏离太远。"
+
     if api_key:
         try:
             client = OpenAI(
@@ -977,7 +1026,9 @@ def get_next_question(session_id: str, request: dict, db: Session = Depends(get_
                 根据当前对话历史，判断现在应该：
                 - 顺着故事追问一个细节（主线程）
                 - 还是在老人沉默、卡壳、情绪回避时，温和地接上话（守护线程）
-                
+
+                {chapter_context}
+
                 以下是对话历史：
                 {history}
 
