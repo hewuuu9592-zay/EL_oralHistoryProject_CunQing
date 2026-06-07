@@ -171,7 +171,7 @@ const FamilyTree = () => {
   const tree = useMemo(() => buildTree(persons, relationships), [persons, relationships])
 
   // 加载数据
-  const fetchData = async () => {
+  const fetchData = async (currentPersonId) => {
     try {
       const [personsRes, relsRes, storiesCountRes] = await Promise.all([
         getPersons(),
@@ -212,7 +212,12 @@ const FamilyTree = () => {
   }
 
   useEffect(() => {
-    fetchData()
+    const currentPersonId = localStorage.getItem('current_person_id')
+    if (currentPersonId) {
+      fetchData(currentPersonId)
+    } else {
+      fetchData()
+    }
   }, [])
 
   const handleEditPerson = (p) => {

@@ -1,14 +1,26 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useNavigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import FamilyTree from './pages/FamilyTree'
 import PersonCard from './pages/PersonCard'
 import StoryDetail from './pages/StoryDetail'
 import RecordStory from './pages/RecordStory'
 import InterviewPage from './pages/InterviewPage'
 import Settings from './pages/Settings'
+import Welcome from './pages/Welcome'
 import { ThemeProvider } from './contexts/ThemeContext'
 import './App.css'
 
 function App() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    // 启动检测
+    const currentPersonId = localStorage.getItem('current_person_id')
+    if (!currentPersonId) {
+      navigate('/welcome', { replace: true })
+    }
+  }, [navigate])
+
   return (
     <ThemeProvider>
       <div className="min-h-screen bg-[#F5F1E9]">
@@ -19,6 +31,7 @@ function App() {
           <Route path="/record" element={<RecordStory />} />
           <Route path="/interview" element={<InterviewPage />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/welcome" element={<Welcome />} />
         </Routes>
       </div>
     </ThemeProvider>
