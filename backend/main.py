@@ -68,8 +68,22 @@ class PersonBase(BaseModel):
     relation_to_owner: Optional[str] = None
     is_owner: Optional[bool] = False
 
+
 class PersonCreate(PersonBase):
     pass
+
+
+class PersonUpdate(BaseModel):
+    name: Optional[str] = None
+    gender: Optional[str] = None
+    birth_year: Optional[int] = None
+    death_year: Optional[int] = None
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    birthplace: Optional[str] = None
+    family_id: Optional[str] = None
+    relation_to_owner: Optional[str] = None
+    is_owner: Optional[bool] = None
 
 class Person(PersonBase):
     id: str
@@ -418,7 +432,7 @@ def update_person(person_id: str, person: PersonCreate, db: Session = Depends(ge
 
 
 @app.patch("/persons/{person_id}", response_model=Person)
-def patch_person(person_id: str, person: PersonCreate, db: Session = Depends(get_db)):
+def patch_person(person_id: str, person: PersonUpdate, db: Session = Depends(get_db)):
     """部分更新人物信息"""
     db_person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if db_person is None:
