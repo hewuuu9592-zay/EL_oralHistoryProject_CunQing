@@ -373,9 +373,6 @@ const FamilyTree = () => {
                         <span className="text-white text-xl font-medium">{p.name?.charAt(0)}</span>
                       )}
                     </div>
-                    {isActive && (
-                      <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-orange-400 rounded-full border-2 border-white" />
-                    )}
                   </div>
                   <span className="text-sm text-[#4A3728] mt-2 truncate max-w-[60px]">
                     {p.name}
