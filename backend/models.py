@@ -29,6 +29,8 @@ class Person(Base):
     avatar_url = Column(String, nullable=True)
     birthplace = Column(String, nullable=True)  # 出生地
     family_id = Column(String, default="default")
+    relation_to_owner = Column(String, nullable=True)  # 与主用户的关系
+    is_owner = Column(Boolean, default=False)  # 标记主用户自己
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     stories = relationship("StoryPerson", back_populates="person")

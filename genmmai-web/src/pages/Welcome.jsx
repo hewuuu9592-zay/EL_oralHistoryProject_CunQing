@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createPerson, initChapters } from '../api'
+import { createPerson, initChapters, updatePerson } from '../api'
 
 const Welcome = () => {
   const navigate = useNavigate()
@@ -42,6 +42,9 @@ const Welcome = () => {
 
       // 存储当前人物ID
       localStorage.setItem('current_person_id', personId)
+
+      // 标记为主用户
+      await updatePerson(personId, { is_owner: true })
 
       // 初始化章节
       await initChapters()
