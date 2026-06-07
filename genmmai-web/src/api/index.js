@@ -25,6 +25,9 @@ export const updateStory = (id, data) => api.put(`/stories/${id}`, data);
 export const patchStory = (id, data) => api.patch(`/stories/${id}`, data);
 export const deleteStory = (id) => api.delete(`/stories/${id}`);
 export const getStoriesCount = () => api.get('/stories/count');
+export const getNextChapter = (personId) => api.get(`/chapters/next/${personId}`);
+export const getPersonChapters = (personId) => api.get(`/persons/${personId}/chapters`);
+export const updateChapterStatus = (personId, chapterId, data) => api.post(`/persons/${personId}/chapters/${chapterId}/status`, data);
 export const uploadAndProcessAudio = (file, personId = "") => {
   const formData = new FormData();
   formData.append('file', file);
@@ -89,8 +92,7 @@ export const createEventMemory = (eventId, data) => api.post(`/historical-events
 export const deleteEventMemory = (eventId, memoryId) => api.delete(`/historical-events/${eventId}/memories/${memoryId}`);
 
 // 采访 API
-export const startInterview = (personId, preferredThemes) => {
-  const data = preferredThemes?.length > 0 ? { preferred_themes: preferredThemes } : {};
+export const startInterview = (personId, data = {}) => {
   return api.post(`/persons/${personId}/interviews/start`, data);
 };
 export const submitInterviewAnswer = (sessionId, formData, question = null) => {
