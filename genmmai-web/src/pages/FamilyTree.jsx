@@ -447,24 +447,20 @@ const FamilyTree = () => {
   ]
 
   return (
-    <div className="flex min-h-screen bg-[#FAF7F2]">
+    <div className="min-h-screen bg-[#FAF7F2]">
+      {/* 固定 Logo - 始终显示在左上角 */}
+      <div className="fixed left-4 top-4 z-50">
+        <h1 className="text-2xl font-serif text-[#5C3D2E]">根脉</h1>
+      </div>
+
       {/* 侧边栏 */}
       <div
-        className={`flex flex-col bg-[#FAF7F2] border-r border-[#E5DED3] transition-all duration-300 ${
-          sidebarExpanded ? 'w-[180px]' : 'w-12'
+        className={`fixed left-0 top-0 h-full flex flex-col bg-[#FAF7F2] border-r border-[#E5DED3] transition-all duration-300 z-40 ${
+          sidebarExpanded ? 'w-[180px]' : 'w-0 overflow-hidden'
         }`}
       >
-        {/* Logo */}
-        <div className="h-16 flex items-center justify-center border-b border-[#E5DED3]">
-          {sidebarExpanded ? (
-            <h1 className="text-2xl font-serif text-[#5C3D2E]">根脉</h1>
-          ) : (
-            <h1 className="text-xl font-serif text-[#5C3D2E]">根</h1>
-          )}
-        </div>
-
         {/* 导航项 */}
-        <div className="flex-1 py-4">
+        <div className="flex-1 py-20">
           {navItems.map((item) => (
             <button
               key={item.key}
@@ -475,22 +471,32 @@ const FamilyTree = () => {
                   : 'text-[#4A3728] hover:bg-[#E8DFD0]'
               }`}
             >
-              <span className="text-sm">{sidebarExpanded ? item.label : ''}</span>
+              <span className="text-sm">{item.label}</span>
             </button>
           ))}
         </div>
 
-        {/* 收起/展开按钮 */}
+        {/* 收起按钮 */}
         <button
           onClick={() => setSidebarExpanded(!sidebarExpanded)}
           className="h-12 border-t border-[#E5DED3] flex items-center justify-center text-[#5C3D2E] hover:bg-[#E8DFD0]"
         >
-          {sidebarExpanded ? '«' : '»'}
+          «
         </button>
       </div>
 
+      {/* 悬浮展开按钮 - 侧边栏收起时显示 */}
+      {!sidebarExpanded && (
+        <button
+          onClick={() => setSidebarExpanded(true)}
+          className="fixed left-0 top-1/2 -translate-y-1/2 z-30 w-8 h-16 bg-[#FAF7F2] border-r border-[#E5DED3] flex items-center justify-center text-[#5C3D2E] hover:bg-[#E8DFD0] rounded-r-full"
+        >
+          »
+        </button>
+      )}
+
       {/* 主内容区 */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className={`flex flex-col overflow-hidden transition-all duration-300 ${sidebarExpanded ? 'ml-[180px]' : 'ml-0'}`}>
         {/* 顶部栏 */}
         <div className="h-16 bg-white border-b border-[#E5DED3] flex items-center justify-between px-6">
           <div className="text-[#5C3D2E] font-medium">
@@ -518,8 +524,8 @@ const FamilyTree = () => {
             <TodayInterview />
           </div>
 
-      {/* 内容区域 - 仅在家族树 tab 显示 */}
-      <div className="pt-0 pb-20" style={{ display: activeTab === 'tree' ? 'block' : 'none' }}>
+          {/* 内容区域 - 仅在家族树 tab 显示 */}
+          <div className="pt-0 pb-20" style={{ display: activeTab === 'tree' ? 'block' : 'none' }}>
       {loading ? (
         <div className="flex items-center justify-center h-screen">
           <div className="text-[#5C3D2E]">加载中...</div>
@@ -560,9 +566,9 @@ const FamilyTree = () => {
           </div>
         </div>
       )}
-      </div>
+          </div>
 
-      {/* 家族树 */}
+          {/* 家族树 */}
           <div style={{ display: activeTab === 'tree' ? 'block' : 'none' }}>
             {loading ? (
               <div className="flex items-center justify-center h-full">
