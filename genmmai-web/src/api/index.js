@@ -44,6 +44,8 @@ export const tagStory = (id, transcript) => api.post(`/stories/${id}/tag`, { tra
 
 // 迁徙记录 API
 export const getPersonMigrations = (id) => api.get(`/persons/${id}/migrations`);
+export const getFamilyMembers = () => api.get('/family-members');
+export const getFamilyMemberStories = (personId) => api.get(`/family-members/${personId}/stories`);
 export const createMigration = (id, data) => api.post(`/persons/${id}/migrations`, data);
 export const updateMigration = (personId, migrationId, data) => api.patch(`/persons/${personId}/migrations/${migrationId}`, data);
 export const deleteMigration = (personId, migrationId, syncToStory = false) => api.delete(`/persons/${personId}/migrations/${migrationId}?sync_to_story=${syncToStory}`);

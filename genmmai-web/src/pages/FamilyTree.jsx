@@ -4,6 +4,7 @@ import { getPersons, getRelationships, getPerson, getPersonChapters, getNextChap
 import FamilyTimeline from './FamilyTimeline'
 import FamilyMigrationMap from './FamilyMigrationMap'
 import ChapterList from './ChapterList'
+import FamilyMembers from './FamilyMembers'
 
 // 日期格式化
 const formatDate = () => {
@@ -275,11 +276,7 @@ const FamilyTree = () => {
           )}
 
           {/* 家族脉络 */}
-          {activeTab === 'tree' && (
-            <div className="p-6">
-              <p className="text-center text-gray-400">家族脉络页面</p>
-            </div>
-          )}
+          {activeTab === 'tree' && <FamilyMembers />}
 
           {/* 家族地图 */}
           {activeTab === 'map' && (
