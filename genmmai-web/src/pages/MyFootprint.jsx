@@ -35,12 +35,15 @@ const createIcon = (year, color, isActive = true) => L.divIcon({
 // 自动适配所有点的组件
 const FitBounds = ({ migrations }) => {
   const map = useMap()
-  const validMigrations = migrations.filter(m => m.latitude && m.longitude)
+  const validMigrations = migrations.filter(m =>
+    m.latitude != null && m.longitude != null &&
+    !isNaN(Number(m.latitude)) && !isNaN(Number(m.longitude))
+  )
 
   useEffect(() => {
     setTimeout(() => map.invalidateSize(), 100)
     if (validMigrations.length > 0) {
-      const bounds = validMigrations.map(m => [m.latitude, m.longitude])
+      const bounds = validMigrations.map(m => [Number(m.latitude), Number(m.longitude)])
       map.fitBounds(bounds, { padding: [40, 40], maxZoom: 5 })
     }
   }, [migrations])
@@ -163,7 +166,10 @@ const AddMigrationModal = ({ personId, migration, chapters, onSave, onCancel }) 
 
 // 地图组件
 const MapView = ({ migrations, selectedChapter, chapters }) => {
-  const validMigrations = migrations.filter(m => m.latitude && m.longitude)
+  const validMigrations = migrations.filter(m =>
+    m.latitude != null && m.longitude != null &&
+    !isNaN(Number(m.latitude)) && !isNaN(Number(m.longitude))
+  )
   const chapterMap = useMemo(() => {
     const map = {}
     chapters.forEach(c => { map[c.id] = c })
@@ -177,12 +183,15 @@ const MapView = ({ migrations, selectedChapter, chapters }) => {
   }
 
   const filteredMigrations = selectedChapter
-    ? migrations.filter(m => m.chapter_id === selectedChapter)
-    : migrations
+    ? validMigrations.filter(m => m.chapter_id === selectedChapter)
+    : validMigrations
 
-  const filteredValid = filteredMigrations.filter(m => m.latitude && m.longitude)
+  const filteredValid = filteredMigrations.filter(m =>
+    m.latitude != null && m.longitude != null &&
+    !isNaN(Number(m.latitude)) && !isNaN(Number(m.longitude))
+  )
   const center = filteredValid.length > 0
-    ? [filteredValid[0].latitude, filteredValid[0].longitude]
+    ? [Number(filteredValid[0].latitude), Number(filteredValid[0].longitude)]
     : [35.8617, 104.1954]
 
   return (
@@ -195,7 +204,7 @@ const MapView = ({ migrations, selectedChapter, chapters }) => {
       {filteredMigrations.map(m => (
         <Marker
           key={m.id}
-          position={[m.latitude, m.longitude]}
+          position={[Number(m.latitude), Number(m.longitude)]}
           icon={createIcon(m.year, getColor(m.chapter_id), !selectedChapter || m.chapter_id === selectedChapter)}
         >
           <Popup>
