@@ -418,49 +418,51 @@ const StoryDetail = () => {
                   {story.transcript || '暂无对话记录'}
                 </p>
               ) : (
-                /* 按【第X轮】拆分显示 */
+                /* 按\n\n拆分，再分别提取【问】和【答-第X轮】 */
                 <div className="space-y-4">
-                  {story.transcript?.split('【第').filter(Boolean).map((roundText, i) => {
-                    // 解析轮次
-                    const roundMatch = roundText.match(/^(\d+)轮】/);
-                    const roundNum = roundMatch ? roundMatch[1] : i + 1;
-                    const content = roundText.replace(/^\d+轮】/, '');
+                  {(() => {
+                    const rounds = story.transcript
+                      ?.split('\n\n')
+                      .filter(block => block.trim())
+                      .map(block => {
+                        const lines = block.split('\n');
+                        const questionLine = lines.find(l => l.startsWith('【问】'));
+                        const answerLine = lines.find(l => l.includes('【答-第'));
+                        const roundMatch = answerLine?.match(/【答-第(\d+)轮】(.*)/);
+                        return {
+                          roundNum: roundMatch?.[1] || '',
+                          question: questionLine?.replace('【问】', '').trim() || '',
+                          answer: roundMatch?.[2]?.trim() || ''
+                        };
+                      })
+                      .filter(r => r.answer) || [];
 
-                    // 尝试拆分问题和回答
-                    let question = '';
-                    let answer = content;
-                    if (content.includes('\n')) {
-                      const parts = content.split('\n');
-                      question = parts[0];
-                      answer = parts.slice(1).join('\n');
-                    }
-
-                    return (
+                    return rounds.map((r, i) => (
                       <div key={i} className="pb-4 border-b border-gray-100 last:border-0">
-                        <div className="text-xs text-gray-400 mb-2">第 {roundNum} 轮</div>
+                        {r.roundNum && (
+                          <div className="text-xs text-gray-400 mb-2">第 {r.roundNum} 轮</div>
+                        )}
 
                         {/* AI 问题气泡（左侧，灰色） */}
-                        {question && (
+                        {r.question && (
                           <div className="flex justify-start mb-3">
                             <div className="bg-gray-100 rounded-2xl px-4 py-2 max-w-[80%]">
-                              <p className="text-sm text-gray-700">{question}</p>
+                              <p className="text-sm text-gray-700">{r.question}</p>
                             </div>
                           </div>
                         )}
 
                         {/* 老人回答区（右侧，暖色） */}
-                        {answer && (
+                        {r.answer && (
                           <div className="flex justify-end">
                             <div className="bg-[#FFF8EE] rounded-2xl px-4 py-2 max-w-[80%]">
-                              {/* 音频播放器（如果有） */}
-                              {/* 转写文字 */}
-                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{answer}</p>
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.answer}</p>
                             </div>
                           </div>
                         )}
                       </div>
-                    );
-                  })}
+                    ));
+                  })()}
                   {!story.transcript && (
                     <p className="text-gray-400 text-center py-8">暂无对话记录</p>
                   )}
@@ -534,7 +536,10 @@ const StoryDetail = () => {
                     className="text-sm text-[#4A3728] hover:underline"
                   >
                     {story.created_at ? new Date(story.created_at).toLocaleDateString('zh-CN') : ''} ·{' '}
-                    {story.transcript?.split('【第').length - 1} 轮对话
+                    {(() => {
+                    const rounds = story.transcript?.split('\n\n').filter(block => block.trim()) || [];
+                    return rounds.length;
+                  })()} 轮对话
                   </button>
                 </div>
               )}
