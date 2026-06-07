@@ -731,6 +731,7 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
 
         # 读取章节的 opening_questions
         opening_questions = json.loads(chapter.opening_questions) if chapter.opening_questions else []
+        print(f"chapter found: {chapter.title}, opening_questions: {opening_questions}")  # 加这行
         if opening_questions:
             question = opening_questions[0]
         else:
@@ -2168,7 +2169,7 @@ def init_chapters(db: Session = Depends(get_db)):
         return {"message": "章节已初始化"}
 
     chapters_data = [
-        {"order_index": 1, "title": "我是谁", "description": "", "opening_questions": "[]"},
+        {"order_index": 1, "title": "我是谁", "description": "", "opening_questions": '["您叫什么名字？今年多大了？请您做一个简单的自我介绍", "您的名字有什么特殊的含义吗？是谁给您取的？小时候有绰号吗？", "您出生在哪个年代、哪个地方？", "您觉得自己是个怎样的人？" ]'},
         {"order_index": 2, "title": "我的来处", "description": "", "opening_questions": "[]"},
         {"order_index": 3, "title": "童年岁月", "description": "", "opening_questions": "[]"},
         {"order_index": 4, "title": "求学时代", "description": "", "opening_questions": "[]"},

@@ -90,6 +90,7 @@ const InterviewPage = () => {
 
       // 然后异步创建采访并生成问题
       const reqData = chapterId ? { chapter_id: chapterId } : (selectedThemes.length > 0 ? { preferred_themes: selectedThemes } : {});
+      console.log('chapterId:', chapterId, 'reqData:', reqData)
       const res = await startInterview(personId, reqData);
       const sessionData = res.data;
       setSession({
