@@ -41,13 +41,14 @@ const StoryDetail = () => {
         const res = await getStory(id);
         setStory(res.data);
 
-        // 轮询生成状态
-        if (res.data?.generation_status && res.data.generation_status !== 'done') {
+        // 轮询生成状态（只对pending/生成中状态轮询）
+        if (res.data?.generation_status && !['done', 'failed'].includes(res.data.generation_status)) {
           const pollStatus = async () => {
             try {
               const statusRes = await getStoryGenerationStatus(id);
-              setGenerationStatus(statusRes);
-              if (statusRes.status === 'done' || statusRes.status === 'failed') {
+              const status = statusRes.data;
+              setGenerationStatus(status);
+              if (status.status === 'done' || status.status === 'failed') {
                 // 刷新故事数据
                 const storyRes = await getStory(id);
                 setStory(storyRes.data);
@@ -375,13 +376,16 @@ const StoryDetail = () => {
           {activeTab === 'story' && (
             <div className="bg-white rounded-2xl p-6 shadow-sm">
               {/* 生成进度条 */}
-              {generationStatus && generationStatus.status !== 'done' && (
+              {generationStatus && generationStatus.status !== 'done' && generationStatus.status !== 'failed' && (
                 <div className="mb-4 text-sm text-gray-500">
                   {generationStatus.status === 'generating_layer2' && 'AI 正在提炼结构化信息...'}
                   {generationStatus.status === 'generating_layer3' && 'AI 正在撰写故事文章...'}
                   {generationStatus.status === 'pending' && '故事生成中...'}
                   {generationStatus.status === 'failed' && '故事生成失败'}
                 </div>
+              )}
+              {generationStatus?.status === 'failed' && (
+                <div className="mb-4 text-sm text-red-500">故事生成失败</div>
               )}
 
               {/* 切换：润色版/原始转录 */}
@@ -469,7 +473,7 @@ const StoryDetail = () => {
           {activeTab === 'structured' && (
             <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
               {/* 生成中状态 */}
-              {(!generationStatus || generationStatus.status !== 'done') && !story.title && !story.summary && (
+              {(!generationStatus || (generationStatus.status !== 'done' && generationStatus.status !== 'failed')) && !story.title && !story.summary && (
                 <p className="text-gray-400 text-center py-8">结构化信息生成中...</p>
               )}
 
