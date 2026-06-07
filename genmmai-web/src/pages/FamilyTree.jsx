@@ -270,10 +270,8 @@ const FamilyTree = () => {
           )}
 
           {/* 我的故事 */}
-          {activeTab === 'stories' && (
-            <div className="p-6">
-              <p className="text-center text-gray-400">我的故事页面</p>
-            </div>
+          {activeTab === 'stories' && currentPersonId && (
+            <FamilyTimeline personId={currentPersonId} />
           )}
 
           {/* 家族脉络 */}

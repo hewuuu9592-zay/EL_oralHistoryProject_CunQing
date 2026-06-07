@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getFamilyTimeline, getPersons, getThemes, getHistoricalEvents, createEventMemory, getEventStories, createCustomEvent, updateCustomEvent, deleteCustomEvent } from '../api';
+import { getPersonStories, getPersons, getThemes, getHistoricalEvents, createEventMemory, getEventStories, createCustomEvent, updateCustomEvent, deleteCustomEvent } from '../api';
 import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
 const CATEGORY_ICONS = {
@@ -19,11 +19,6 @@ const CATEGORY_ICONS = {
 
 // 筛选栏组件
 const FilterBar = ({
-  persons,
-  selectedPersons,
-  setSelectedPersons,
-  yearRange,
-  setYearRange,
   selectedThemes,
   setSelectedThemes,
   themes,
@@ -35,14 +30,6 @@ const FilterBar = ({
       setSelectedThemes(selectedThemes.filter(t => t !== theme));
     } else {
       setSelectedThemes([...selectedThemes, theme]);
-    }
-  };
-
-  const togglePerson = (pid) => {
-    if (selectedPersons.includes(pid)) {
-      setSelectedPersons(selectedPersons.filter(p => p !== pid));
-    } else {
-      setSelectedPersons([...selectedPersons, pid]);
     }
   };
 
@@ -447,11 +434,12 @@ const TimelineAxis = ({ yearFrom, yearTo }) => {
 };
 
 // 主组件
-const FamilyTimeline = ({ searchParams: externalSearchParams }) => {
+const FamilyTimeline = ({ personId, searchParams: externalSearchParams }) => {
   const navigate = useNavigate();
   // 使用外部传入的 searchParams 或自己的
   const [localSearchParams] = useSearchParams();
   const searchParams = externalSearchParams || localSearchParams;
+  const currentPersonId = personId || localStorage.getItem('current_person_id');
   const [stories, setStories] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -485,13 +473,12 @@ const FamilyTimeline = ({ searchParams: externalSearchParams }) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [timelineRes, personsRes, themesRes] = await Promise.all([
-          getFamilyTimeline(),
-          getPersons(),
+        const [storiesRes, themesRes] = await Promise.all([
+          getPersonStories(currentPersonId),
           getThemes(),
         ]);
-        const familyStories = timelineRes.data || [];
-        setStories(familyStories);
+        const personStories = storiesRes.data || [];
+        setStories(personStories);
         setPersons(personsRes.data || []);
         setThemes(themesRes.data || []);
         setSelectedThemes(themesRes.data?.map(t => t.name) || []);
@@ -674,11 +661,6 @@ const FamilyTimeline = ({ searchParams: externalSearchParams }) => {
 
       {/* 筛选栏 */}
       <FilterBar
-        persons={persons}
-        selectedPersons={selectedPersons}
-        setSelectedPersons={setSelectedPersons}
-        yearRange={yearRange}
-        setYearRange={setYearRange}
         selectedThemes={selectedThemes}
         setSelectedThemes={setSelectedThemes}
         themes={themes}
