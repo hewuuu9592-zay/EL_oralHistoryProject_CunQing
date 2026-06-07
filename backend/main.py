@@ -198,6 +198,16 @@ class StoryWithPersons(BaseModel):
     transcription_status: Optional[str] = "pending"
     ai_tag_status: Optional[str] = "untagged"
     persons: List[PersonBrief] = []
+    # 采访生成的故事额外字段
+    narrative_polish: Optional[str] = None
+    structured_snippets: Optional[str] = None
+    generation_status: Optional[str] = None
+    source_session_id: Optional[str] = None
+    time_range: Optional[str] = None
+    tags: Optional[str] = None
+    involved_people: Optional[str] = None
+    key_events: Optional[str] = None
+    title: Optional[str] = None
     class Config:
         from_attributes = True
 
@@ -2145,7 +2155,17 @@ def read_story(story_id: str, db: Session = Depends(get_db)):
         created_at=db_story.created_at,
         transcription_status=db_story.transcription_status,
         ai_tag_status=db_story.ai_tag_status,
-        persons=persons
+        persons=persons,
+        # 采访生成的故事额外字段
+        narrative_polish=db_story.narrative_polish,
+        structured_snippets=db_story.structured_snippets,
+        generation_status=db_story.generation_status,
+        source_session_id=db_story.source_session_id,
+        time_range=db_story.time_range,
+        tags=db_story.tags,
+        involved_people=db_story.involved_people,
+        key_events=db_story.key_events,
+        title=db_story.title,
     )
 
 
