@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getPersons, getRelationships, getPerson, getPersonChapters, getNextChapter, updateChapterStatus, getStoriesCount, startInterview, getPersonStories, getPersonInterviews, createPerson, updatePerson, deletePerson, deleteRelationship, getPersonMigrations } from '../api'
 import FamilyTimeline from './FamilyTimeline'
 import FamilyMigrationMap from './FamilyMigrationMap'
+import ChapterList from './ChapterList'
 
 // 日期格式化
 const formatDate = () => {
@@ -22,6 +23,7 @@ const FamilyTree = () => {
   const [nextChapter, setNextChapter] = useState(null)
   const [chapters, setChapters] = useState([])
   const [totalStories, setTotalStories] = useState(0)
+  const [showChapterList, setShowChapterList] = useState(false)
 
   // 加载数据
   const fetchData = async (personId) => {
@@ -233,22 +235,36 @@ const FamilyTree = () => {
 
               {/* 底部章节进度 */}
               <div className="mt-8">
-                <p className="text-sm text-gray-400 mb-3">章节进度</p>
-                <div className="flex gap-2">
-                  {Array.from({ length: 11 }, (_, i) => {
-                    const chapter = chapters.find(c => c.order_index === i + 1)
-                    const isCompleted = chapter?.status === 'completed'
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => chapter && setNextChapter(chapter)}
-                        className={`flex-1 h-2 rounded-full transition-colors ${
-                          isCompleted ? 'bg-[#D4A574]' : 'bg-gray-200'
-                        }`}
-                      />
-                    )
-                  })}
+                <button
+                  onClick={() => setShowChapterList(!showChapterList)}
+                  className="w-full py-3 text-center text-[#5C3D2E] border border-[#E5DED3] rounded-xl hover:bg-[#F5F1E9]"
+                >
+                  {showChapterList ? '收起章节列表' : '查看全部章节'}
+                </button>
+
+                {showChapterList && (
+                  <div className="mt-4">
+                    <ChapterList personId={currentPersonId} />
+                  </div>
+                )}
+
+                {!showChapterList && (
+                  <div className="flex gap-2 mt-4">
+                    {Array.from({ length: 11 }, (_, i) => {
+                      const chapter = chapters.find(c => c.order_index === i + 1)
+                      const isCompleted = chapter?.status === 'completed'
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => chapter && setNextChapter(chapter)}
+                          className={`flex-1 h-2 rounded-full transition-colors ${
+                            isCompleted ? 'bg-[#D4A574]' : 'bg-gray-200'
+                          }`}
+                        />
+                      )
+                    })}
                 </div>
+                )}
               </div>
             </div>
           )}

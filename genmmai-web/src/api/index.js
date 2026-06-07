@@ -27,6 +27,7 @@ export const deleteStory = (id) => api.delete(`/stories/${id}`);
 export const getStoriesCount = () => api.get('/stories/count');
 export const getNextChapter = (personId) => api.get(`/chapters/next/${personId}`);
 export const getPersonChapters = (personId) => api.get(`/persons/${personId}/chapters`);
+export const getChapterStories = (personId, chapterId) => api.get(`/persons/${personId}/chapters/${chapterId}/stories`);
 export const updateChapterStatus = (personId, chapterId, data) => api.post(`/persons/${personId}/chapters/${chapterId}/status`, data);
 export const uploadAndProcessAudio = (file, personId = "") => {
   const formData = new FormData();
