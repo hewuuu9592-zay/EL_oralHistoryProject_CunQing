@@ -77,6 +77,49 @@ const AddMigrationModal = ({ personId, migration, chapters, onSave, onCancel }) 
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searchTimeout, setSearchTimeout] = useState(null)
+
+  const searchPlace = async (keyword) => {
+    if (!keyword || keyword.length < 2) {
+      setSearchResults([])
+      return
+    }
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(keyword)}&format=json&limit=5&accept-language=zh`
+      )
+      const data = await response.json()
+      setSearchResults(data)
+    } catch (e) {
+      console.error('搜索失败:', e)
+    }
+  }
+
+  const handlePlaceChange = (value) => {
+    setForm({ ...form, place_name: value })
+    if (searchTimeout) clearTimeout(searchTimeout)
+    if (value.length >= 2) {
+      const timeout = setTimeout(() => searchPlace(value), 300)
+      setSearchTimeout(timeout)
+    } else {
+      setSearchResults([])
+    }
+  }
+
+  const selectPlace = (place) => {
+    setForm({
+      ...form,
+      place_name: place.display_name,
+      latitude: String(place.lat),
+      longitude: place.lon,
+    })
+    setSearchResults([])
+  }
+
+  const clearSelectedPlace = () => {
+    setForm({ ...form, place_name: '', latitude: '', longitude: '' })
+  }
 
   const handleSubmit = async () => {
     if (!form.place_name.trim()) {
@@ -101,6 +144,8 @@ const AddMigrationModal = ({ personId, migration, chapters, onSave, onCancel }) 
     }
   }
 
+  const hasSelectedPlace = form.latitude && form.longitude
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 w-[400px] max-h-[90vh] overflow-y-auto">
@@ -108,16 +153,70 @@ const AddMigrationModal = ({ personId, migration, chapters, onSave, onCancel }) 
           {migration ? '编辑地点' : '添加地点'}
         </h3>
         <div className="space-y-4">
-          <div>
+          <div className="relative">
             <label className="block text-sm text-gray-600 mb-1">地点名称 <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={form.place_name}
-              onChange={(e) => setForm({ ...form, place_name: e.target.value })}
+              onChange={(e) => handlePlaceChange(e.target.value)}
               className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
-              placeholder="请输入地点名称"
+              placeholder="输入地名搜索或手动输入"
             />
+            {searchResults.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-[#E5DED3] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                {searchResults.map((place, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => selectPlace(place)}
+                    className="px-3 py-2 cursor-pointer hover:bg-[#F5F1E9] text-sm border-b border-[#F5F1E9] last:border-b-0"
+                  >
+                    {place.display_name}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+          {hasSelectedPlace && (
+            <div className="flex items-center justify-between bg-green-50 px-3 py-2 rounded-lg border border-green-200">
+              <div className="flex-1 min-w-0">
+                <span className="text-sm text-green-700 truncate">{form.place_name}</span>
+                <span className="text-xs text-green-600 ml-2">
+                  ({form.latitude}, {form.longitude})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={clearSelectedPlace}
+                className="text-green-600 hover:text-green-800 text-sm ml-2"
+              >
+                清除
+              </button>
+            </div>
+          )}
+          {!hasSelectedPlace && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">纬度</label>
+                <input
+                  type="text"
+                  value={form.latitude}
+                  onChange={(e) => setForm({ ...form, latitude: e.target.value })}
+                  className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
+                  placeholder="如：39.9042"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">经度</label>
+                <input
+                  type="text"
+                  value={form.longitude}
+                  onChange={(e) => setForm({ ...form, longitude: e.target.value })}
+                  className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
+                  placeholder="如：116.4074"
+                />
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-sm text-gray-600 mb-1">所属章节</label>
             <select
