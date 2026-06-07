@@ -147,3 +147,26 @@ class InterviewRound(Base):
     transcript = Column(Text, nullable=True)  # 转写文字
     transcript_status = Column(String, default="pending")  # pending/processing/done/failed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class AutobiographyChapter(Base):
+    """预设章节库"""
+    __tablename__ = "autobiography_chapters"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    order_index = Column(Integer, nullable=False, unique=True)  # 章节顺序 1-11
+    title = Column(String, nullable=False)  # 章节名
+    description = Column(Text, nullable=True)  # 一句引导语
+    opening_questions = Column(Text, nullable=True)  # JSON数组，初始问题
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class PersonChapter(Base):
+    """人物章节进度"""
+    __tablename__ = "person_chapters"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    person_id = Column(String, ForeignKey("persons.id"), nullable=False)
+    chapter_id = Column(String, ForeignKey("autobiography_chapters.id"), nullable=False)
+    status = Column(String, default="not_started")  # not_started/in_progress/completed/skipped
+    skip_reason = Column(Text, nullable=True)  # 跳过原因
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow)

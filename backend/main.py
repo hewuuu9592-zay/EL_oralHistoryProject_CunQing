@@ -1956,6 +1956,117 @@ def get_stories_count(db: Session = Depends(get_db)):
     count = db.query(models.Story).count()
     return {"count": count}
 
+# ============= Autobiography Chapters API =============
+
+@app.get("/chapters")
+def get_chapters(db: Session = Depends(get_db)):
+    """返回所有章节定义，按 order_index 排序"""
+    chapters = db.query(models.AutobiographyChapter).order_by(models.AutobiographyChapter.order_index).all()
+    return [{
+        "id": c.id,
+        "order_index": c.order_index,
+        "title": c.title,
+        "description": c.description,
+        "opening_questions": json.loads(c.opening_questions) if c.opening_questions else [],
+    } for c in chapters]
+
+@app.post("/chapters/init")
+def init_chapters(db: Session = Depends(get_db)):
+    """初始化11个预设章节到数据库"""
+    existing = db.query(models.AutobiographyChapter).first()
+    if existing:
+        return {"message": "章节已初始化"}
+
+    chapters_data = [
+        {"order_index": 1, "title": "我是谁", "description": "", "opening_questions": "[]"},
+        {"order_index": 2, "title": "我的来处", "description": "", "opening_questions": "[]"},
+        {"order_index": 3, "title": "童年岁月", "description": "", "opening_questions": "[]"},
+        {"order_index": 4, "title": "求学时代", "description": "", "opening_questions": "[]"},
+        {"order_index": 5, "title": "工作与理想", "description": "", "opening_questions": "[]"},
+        {"order_index": 6, "title": "爱情与婚姻", "description": "", "opening_questions": "[]"},
+        {"order_index": 7, "title": "为人亲长", "description": "", "opening_questions": "[]"},
+        {"order_index": 8, "title": "坎坷与选择", "description": "", "opening_questions": "[]"},
+        {"order_index": 9, "title": "高光与遗憾", "description": "", "opening_questions": "[]"},
+        {"order_index": 10, "title": "现在的日子", "description": "", "opening_questions": "[]"},
+        {"order_index": 11, "title": "寄语", "description": "", "opening_questions": "[]"},
+    ]
+    for data in chapters_data:
+        chapter = models.AutobiographyChapter(**data)
+        db.add(chapter)
+    db.commit()
+    return {"message": "章节初始化完成"}
+
+@app.get("/persons/{person_id}/chapters")
+def get_person_chapters(person_id: str, db: Session = Depends(get_db)):
+    """返回该人物所有章节的状态列表"""
+    # 获取该人物的章节进度记录
+    person_chapters = db.query(models.PersonChapter).filter(
+        models.PersonChapter.person_id == person_id
+    ).all()
+    chapter_status_map = {pc.chapter_id: pc for pc in person_chapters}
+
+    # 获取所有预设章节
+    all_chapters = db.query(models.AutobiographyChapter).order_by(
+        models.AutobiographyChapter.order_index
+    ).all()
+
+    result = []
+    for c in all_chapters:
+        pc = chapter_status_map.get(c.id)
+        status = pc.status if pc else "not_started"
+        skip_reason = pc.skip_reason if pc else None
+
+        # 统计该章节关联的故事数量（通过 story_persons 关联）
+        stories_count = 0
+
+        result.append({
+            "chapter_id": c.id,
+            "order_index": c.order_index,
+            "title": c.title,
+            "description": c.description,
+            "opening_questions": json.loads(c.opening_questions) if c.opening_questions else [],
+            "status": status,
+            "skip_reason": skip_reason,
+            "stories_count": stories_count,
+        })
+
+    return result
+
+@app.post("/persons/{person_id}/chapters/{chapter_id}/status")
+def update_chapter_status(
+    person_id: str,
+    chapter_id: str,
+    request: dict,
+    db: Session = Depends(get_db)
+):
+    """更新章节状态"""
+    status = request.get("status")
+    skip_reason = request.get("skip_reason")
+
+    if status not in ["not_started", "in_progress", "completed", "skipped"]:
+        raise HTTPException(status_code=400, detail="无效状态")
+
+    # 查找或创建人物章节记录
+    pc = db.query(models.PersonChapter).filter(
+        models.PersonChapter.person_id == person_id,
+        models.PersonChapter.chapter_id == chapter_id,
+    ).first()
+
+    if not pc:
+        pc = models.PersonChapter(
+            person_id=person_id,
+            chapter_id=chapter_id,
+        )
+        db.add(pc)
+
+    pc.status = status
+    if skip_reason:
+        pc.skip_reason = skip_reason
+    pc.updated_at = datetime.utcnow()
+
+    db.commit()
+    return {"message": "状态更新成功"}
+
 @app.post("/stories", response_model=Story)
 def create_story(story: StoryCreate, db: Session = Depends(get_db)):
     """新增故事"""
