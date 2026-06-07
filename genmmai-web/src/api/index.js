@@ -26,6 +26,7 @@ export const patchStory = (id, data) => api.patch(`/stories/${id}`, data);
 export const deleteStory = (id) => api.delete(`/stories/${id}`);
 export const getStoriesCount = () => api.get('/stories/count');
 export const getNextChapter = (personId) => api.get(`/chapters/next/${personId}`);
+export const getChapters = () => api.get('/chapters');
 export const getPersonChapters = (personId) => api.get(`/persons/${personId}/chapters`);
 export const getChapterStories = (personId, chapterId) => api.get(`/persons/${personId}/chapters/${chapterId}/stories`);
 export const updateChapterStatus = (personId, chapterId, data) => api.post(`/persons/${personId}/chapters/${chapterId}/status`, data);
@@ -44,6 +45,7 @@ export const tagStory = (id, transcript) => api.post(`/stories/${id}/tag`, { tra
 
 // 迁徙记录 API
 export const getPersonMigrations = (id) => api.get(`/persons/${id}/migrations`);
+export const getMigrationsByChapter = (id) => api.get(`/persons/${id}/migrations/by-chapter`);
 export const getFamilyMembers = () => api.get('/family-members');
 export const getFamilyMemberStories = (personId) => api.get(`/family-members/${personId}/stories`);
 export const createMigration = (id, data) => api.post(`/persons/${id}/migrations`, data);

@@ -5,6 +5,7 @@ import FamilyTimeline from './FamilyTimeline'
 import FamilyMigrationMap from './FamilyMigrationMap'
 import ChapterList from './ChapterList'
 import FamilyMembers from './FamilyMembers'
+import MyFootprint from './MyFootprint'
 
 // 日期格式化
 const formatDate = () => {
@@ -89,7 +90,7 @@ const FamilyTree = () => {
     { key: 'today', label: '我的自传' },
     { key: 'stories', label: '我的故事' },
     { key: 'tree', label: '家族脉络' },
-    { key: 'map', label: '家族地图' },
+    { key: 'map', label: '我的足迹' },
   ]
 
   // 计算进度
@@ -173,7 +174,7 @@ const FamilyTree = () => {
         </div>
 
         {/* 内容区域 */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-hidden">
           {/* 我的自传首页 */}
           {activeTab === 'today' && (
             <div className="p-6">
@@ -287,11 +288,9 @@ const FamilyTree = () => {
           {/* 家族脉络 */}
           {activeTab === 'tree' && <FamilyMembers />}
 
-          {/* 家族地图 */}
-          {activeTab === 'map' && (
-            <div className="p-6">
-              <p className="text-center text-gray-400">家族地图页面</p>
-            </div>
+          {/* 我的足迹 */}
+          {activeTab === 'map' && currentPersonId && (
+            <MyFootprint personId={currentPersonId} />
           )}
         </div>
       </div>
