@@ -23,6 +23,7 @@ export const getStory = (id) => api.get(`/stories/${id}`);
 export const updateStory = (id, data) => api.put(`/stories/${id}`, data);
 export const patchStory = (id, data) => api.patch(`/stories/${id}`, data);
 export const deleteStory = (id) => api.delete(`/stories/${id}`);
+export const getStoriesCount = () => api.get('/stories/count');
 export const uploadAndProcessAudio = (file, personId = "") => {
   const formData = new FormData();
   formData.append('file', file);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deletePersonForce, deleteRelationship, getPersonInterviews, startInterview, uploadAndProcessAudio } from '../api'
+import { getPersons, getRelationships, createPerson, createRelationship, updatePerson, deletePerson, deletePersonForce, deleteRelationship, getPersonInterviews, startInterview, uploadAndProcessAudio, getStoriesCount } from '../api'
 import FamilyTimeline from './FamilyTimeline'
 import FamilyMigrationMap from './FamilyMigrationMap'
 
@@ -173,17 +173,18 @@ const FamilyTree = () => {
   // 加载数据
   const fetchData = async () => {
     try {
-      const [personsRes, relsRes] = await Promise.all([
+      const [personsRes, relsRes, storiesCountRes] = await Promise.all([
         getPersons(),
         getRelationships(),
+        getStoriesCount(),
       ])
       setPersons(personsRes.data || [])
       setRelationships(relsRes.data || [])
+      setTotalStories(storiesCountRes.data?.count || 0)
 
       // 查询每个成员的采访状态
       const allPersons = personsRes.data || []
       const sessionsMap = {}
-      let total = 0
       for (const p of allPersons) {
         try {
           const intRes = await getPersonInterviews(p.id)
@@ -193,13 +194,11 @@ const FamilyTree = () => {
           if (active) {
             sessionsMap[p.id] = active
           }
-          total += sessions.reduce((sum, s) => sum + (s.stories_created || 0), 0)
         } catch (e) {
           console.error('获取采访记录失败:', e)
         }
       }
       setActiveSessions(sessionsMap)
-      setTotalStories(total)
     } catch (error) {
       console.error('Failed to load data:', error)
     } finally {

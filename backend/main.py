@@ -1950,6 +1950,12 @@ def read_stories(db: Session = Depends(get_db)):
     """返回所有故事"""
     return db.query(models.Story).order_by(models.Story.created_at.desc()).all()
 
+@app.get("/stories/count")
+def get_stories_count(db: Session = Depends(get_db)):
+    """返回故事总数"""
+    count = db.query(models.Story).count()
+    return {"count": count}
+
 @app.post("/stories", response_model=Story)
 def create_story(story: StoryCreate, db: Session = Depends(get_db)):
     """新增故事"""
