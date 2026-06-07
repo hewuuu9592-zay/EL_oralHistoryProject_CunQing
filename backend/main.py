@@ -259,6 +259,7 @@ class MigrationRecordBase(BaseModel):
     year: Optional[int] = None
     description: Optional[str] = None
     source_story_id: Optional[str] = None
+    chapter_id: Optional[str] = None
 
 
 class MigrateExtractResponseItem(BaseModel):
@@ -304,6 +305,7 @@ class MigrationRecordUpdate(BaseModel):
 class MigrationRecordResponse(MigrationRecordBase):
     id: str
     person_id: str
+    chapter_id: Optional[str] = None
     class Config:
         from_attributes = True
 
@@ -1555,6 +1557,51 @@ def read_person_migrations(person_id: str, db: Session = Depends(get_db)):
     return records
 
 
+@app.get("/persons/{person_id}/migrations/by-chapter")
+def get_migrations_by_chapter(person_id: str, db: Session = Depends(get_db)):
+    """返回该人物的迁徙记录，按章节分组"""
+    # 检查人物是否存在
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="人物不存在")
+
+    # 获取所有迁徙记录
+    records = db.query(models.MigrationRecord).filter(
+        models.MigrationRecord.person_id == person_id
+    ).order_by(
+        models.MigrationRecord.year.is_(None),
+        models.MigrationRecord.year.asc()
+    ).all()
+
+    # 获取章节信息
+    chapters = db.query(models.AutobiographyChapter).all()
+    chapter_info = {c.id: {"title": c.title, "order_index": c.order_index} for c in chapters}
+
+    # 按章节分组
+    grouped = {}
+    for r in records:
+        cid = r.chapter_id or "other"
+        if cid not in grouped:
+            grouped[cid] = {
+                "chapter_id": cid if cid != "other" else None,
+                "chapter_title": chapter_info.get(cid, {}).get("title", "其他") if cid != "other" else "其他",
+                "order_index": chapter_info.get(cid, {}).get("order_index", 999) if cid != "other" else 999,
+                "migrations": []
+            }
+        grouped[cid]["migrations"].append({
+            "id": r.id,
+            "place_name": r.place_name,
+            "latitude": r.latitude,
+            "longitude": r.longitude,
+            "year": r.year,
+            "description": r.description
+        })
+
+    # 按 order_index 排序
+    result = sorted(grouped.values(), key=lambda x: x["order_index"])
+    return result
+
+
 @app.post("/persons/{person_id}/migrations", response_model=MigrationRecordResponse)
 def create_migration_record(person_id: str, migration: MigrationRecordCreate, db: Session = Depends(get_db)):
     """新增一条迁徙记录"""
@@ -1578,7 +1625,8 @@ def create_migration_record(person_id: str, migration: MigrationRecordCreate, db
         latitude=latitude,
         longitude=longitude,
         year=migration.year,
-        description=migration.description
+        description=migration.description,
+        chapter_id=migration.chapter_id
     )
     db.add(db_record)
     db.commit()
@@ -1885,6 +1933,14 @@ def confirm_story_migrations(story_id: str, request: MigrateConfirmRequest, db: 
     if not story:
         raise HTTPException(status_code=404, detail="故事不存在")
 
+    # 查询该故事关联的章节ID
+    chapter_id = None
+    cs_record = db.query(models.ChapterStory).filter(
+        models.ChapterStory.story_id == story_id
+    ).first()
+    if cs_record:
+        chapter_id = cs_record.chapter_id
+
     written_count = 0
     for migration in request.migrations:
         # 为每个人物写入一条记录
@@ -1896,7 +1952,8 @@ def confirm_story_migrations(story_id: str, request: MigrateConfirmRequest, db: 
                 longitude=migration.longitude,
                 year=migration.year,
                 description=migration.description,
-                source_story_id=story_id
+                source_story_id=story_id,
+                chapter_id=chapter_id
             )
             db.add(db_record)
             written_count += 1
@@ -1997,6 +2054,14 @@ def batch_extract_migrations(person_id: str, db: Session = Depends(get_db)):
         ).all()
         story_person_ids = [sp.person_id for sp in story_persons]
 
+        # 查询该故事关联的章节ID
+        chapter_id = None
+        cs_record = db.query(models.ChapterStory).filter(
+            models.ChapterStory.story_id == story.id
+        ).first()
+        if cs_record:
+            chapter_id = cs_record.chapter_id
+
         # 调用 AI 提取地名
         extracted = extract_locations_from_single_story(story.id, db)
 
@@ -2024,7 +2089,8 @@ def batch_extract_migrations(person_id: str, db: Session = Depends(get_db)):
                     longitude=longitude,
                     year=item.get("year"),
                     description=item.get("description"),
-                    source_story_id=story.id
+                    source_story_id=story.id,
+                    chapter_id=chapter_id
                 )
                 db.add(db_record)
                 written_count += 1

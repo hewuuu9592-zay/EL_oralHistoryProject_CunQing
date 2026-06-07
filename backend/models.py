@@ -46,6 +46,7 @@ class MigrationRecord(Base):
     year = Column(Integer, nullable=True)
     description = Column(Text, nullable=True)
     source_story_id = Column(String, nullable=True)
+    chapter_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
