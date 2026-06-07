@@ -448,21 +448,21 @@ const FamilyTree = () => {
 
   return (
     <div className="min-h-screen bg-[#FAF7F2]">
-      {/* 固定 Logo - 始终显示在左上角 */}
-      <div className="fixed left-4 top-4 z-50">
-        <h1 className="text-2xl font-serif text-[#5C3D2E]">根脉</h1>
-      </div>
-
       {/* 侧边栏 */}
       <div
-        className={`fixed left-0 top-0 h-full w-[180px] flex flex-col bg-[#FAF7F2] border-r border-[#E5DED3] z-40 transition-transform duration-300 ease ${
-          sidebarExpanded
-            ? 'translate-x-0 opacity-100'
-            : '-translate-x-full opacity-0 pointer-events-none'
+        className={`fixed left-0 top-0 h-full flex flex-col bg-[#FAF7F2] border-r border-[#E5DED3] z-40 transition-all duration-300 ${
+          sidebarExpanded ? 'w-[180px]' : 'w-0 overflow-hidden'
         }`}
       >
+        {/* Logo - 仅展开时显示 */}
+        {sidebarExpanded && (
+          <div className="h-16 flex items-center justify-center border-b border-[#E5DED3]">
+            <h1 className="text-2xl font-serif text-[#5C3D2E]">根脉</h1>
+          </div>
+        )}
+
         {/* 导航项 */}
-        <div className="flex-1 py-20">
+        <div className="flex-1 py-4">
           {navItems.map((item) => (
             <button
               key={item.key}
