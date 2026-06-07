@@ -2121,6 +2121,34 @@ def patch_story(story_id: str, story_update: StoryUpdate, background_tasks: Back
 
     return db_story
 
+@app.delete("/stories/{story_id}")
+def delete_story(story_id: str, db: Session = Depends(get_db)):
+    """删除故事"""
+    story = db.query(models.Story).filter(models.Story.id == story_id).first()
+    if not story:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    # 删除关联的 audio 文件
+    if story.audio_url:
+        audio_path = story.audio_url.lstrip('/')
+        if os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+                print(f"已删除音频文件: {audio_path}")
+            except Exception as e:
+                print(f"删除音频文件失败: {e}")
+
+    # 删除关联的 StoryPerson 记录
+    db.query(models.StoryPerson).filter(
+        models.StoryPerson.story_id == story_id
+    ).delete()
+
+    # 删除故事
+    db.delete(story)
+    db.commit()
+
+    return {"success": True}
+
 @app.get("/stories/{story_id}", response_model=StoryWithPersons)
 def read_story(story_id: str, db: Session = Depends(get_db)):
     """返回单个故事详情（含人物列表）"""

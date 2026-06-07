@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getStory, patchStory, getPersons, getStoryGenerationStatus } from '../api';
+import { getStory, patchStory, getPersons, getStoryGenerationStatus, deleteStory } from '../api';
 import { useTheme } from '../contexts/ThemeContext';
 
 const StoryDetail = () => {
@@ -11,6 +11,8 @@ const StoryDetail = () => {
   const [story, setStory] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -156,6 +158,20 @@ const StoryDetail = () => {
     }
   };
 
+  // 删除故事
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteStory(id);
+      navigate(-1);
+    } catch (err) {
+      console.error('删除失败:', err);
+      setError(err.response?.data?.detail || '删除失败，请重试');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // 音频事件监听
   useEffect(() => {
     const audio = audioRef.current;
@@ -276,6 +292,16 @@ const StoryDetail = () => {
               📜 {story.related_history}
             </button>
           )}
+
+          {/* 删除按钮 */}
+          <button
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm hover:shadow text-red-500"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
 
           {/* 编辑按钮 */}
           <button
@@ -729,6 +755,42 @@ const StoryDetail = () => {
               >
                 {saving ? '保存中...' : '保存'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 删除确认 Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6">
+            <div className="text-center">
+              {/* 警告图标 */}
+              <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
+                <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+
+              <h3 className="text-lg font-medium text-gray-900 mb-2">确定删除这个故事吗？</h3>
+              <p className="text-sm text-gray-500 mb-6">删除后无法恢复</p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 transition-colors"
+                >
+                  {deleting ? '删除中...' : '删除'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
