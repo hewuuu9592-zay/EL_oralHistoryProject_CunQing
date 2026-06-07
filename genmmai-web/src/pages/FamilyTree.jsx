@@ -455,8 +455,10 @@ const FamilyTree = () => {
 
       {/* 侧边栏 */}
       <div
-        className={`fixed left-0 top-0 h-full flex flex-col bg-[#FAF7F2] border-r border-[#E5DED3] transition-all duration-300 z-40 ${
-          sidebarExpanded ? 'w-[180px]' : 'w-0 overflow-hidden'
+        className={`fixed left-0 top-0 h-full w-[180px] flex flex-col bg-[#FAF7F2] border-r border-[#E5DED3] z-40 transition-transform duration-300 ease ${
+          sidebarExpanded
+            ? 'translate-x-0 opacity-100'
+            : '-translate-x-full opacity-0 pointer-events-none'
         }`}
       >
         {/* 导航项 */}
@@ -485,15 +487,15 @@ const FamilyTree = () => {
         </button>
       </div>
 
-      {/* 悬浮展开按钮 - 侧边栏收起时显示 */}
-      {!sidebarExpanded && (
-        <button
-          onClick={() => setSidebarExpanded(true)}
-          className="fixed left-0 top-1/2 -translate-y-1/2 z-30 w-8 h-16 bg-[#FAF7F2] border-r border-[#E5DED3] flex items-center justify-center text-[#5C3D2E] hover:bg-[#E8DFD0] rounded-r-full"
-        >
-          »
-        </button>
-      )}
+      {/* 悬浮展开按钮 */}
+      <button
+        onClick={() => setSidebarExpanded(true)}
+        className={`fixed left-0 top-1/2 -translate-y-1/2 z-30 w-8 h-16 bg-[#FAF7F2] border-r border-[#E5DED3] flex items-center justify-center text-[#5C3D2E] hover:bg-[#E8DFD0] rounded-r-full transition-opacity duration-200 ${
+          sidebarExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}
+      >
+        »
+      </button>
 
       {/* 主内容区 */}
       <div className={`flex flex-col overflow-hidden transition-all duration-300 ${sidebarExpanded ? 'ml-[180px]' : 'ml-0'}`}>
