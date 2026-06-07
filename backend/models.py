@@ -170,3 +170,13 @@ class PersonChapter(Base):
     skip_reason = Column(Text, nullable=True)  # 跳过原因
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class ChapterStory(Base):
+    """章节与故事关联"""
+    __tablename__ = "chapter_stories"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    person_id = Column(String, ForeignKey("persons.id"), nullable=False)
+    chapter_id = Column(String, ForeignKey("autobiography_chapters.id"), nullable=False)
+    story_id = Column(String, ForeignKey("stories.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

@@ -100,6 +100,7 @@ class StoryBase(BaseModel):
     theme: Optional[str] = None
     transcription_status: Optional[str] = "pending"
     ai_tag_status: Optional[str] = "untagged"
+    chapter_id: Optional[str] = None  # 关联的章节ID
 
 class TagRequest(BaseModel):
     transcript: str
@@ -1031,9 +1032,16 @@ def get_next_question(session_id: str, request: dict, db: Session = Depends(get_
 
 
 @app.post("/interviews/{session_id}/complete", response_model=InterviewCompleteResponse)
-def complete_interview(session_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def complete_interview(
+    session_id: str,
+    request: dict = {},
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db)
+):
     """完成采访，生成唯一的故事并触发三层异步处理"""
     import json as json_lib
+
+    chapter_id = request.get("chapter_id") if request else None
 
     session = db.query(models.InterviewSession).filter(
         models.InterviewSession.id == session_id
@@ -1051,7 +1059,7 @@ def complete_interview(session_id: str, background_tasks: BackgroundTasks, db: S
         models.InterviewRound.transcript_status == "done"
     ).order_by(models.InterviewRound.round_index.asc()).all()
 
-    # 如果没有有效转写，标记为废弃
+    # ��果没有有效转写，标记为废弃
     if not rounds:
         session.status = "abandoned"
         db.commit()
@@ -1086,6 +1094,31 @@ def complete_interview(session_id: str, background_tasks: BackgroundTasks, db: S
     )
     db.add(sp)
 
+    # 如果有 chapter_id，关联章节并更新状态
+    if chapter_id:
+        cs = models.ChapterStory(
+            person_id=session.person_id,
+            chapter_id=chapter_id,
+            story_id=story.id,
+        )
+        db.add(cs)
+
+        # 更新人物章节状态为 completed
+        pc = db.query(models.PersonChapter).filter(
+            models.PersonChapter.person_id == session.person_id,
+            models.PersonChapter.chapter_id == chapter_id,
+        ).first()
+        if pc:
+            pc.status = "completed"
+            pc.updated_at = datetime.utcnow()
+        else:
+            pc = models.PersonChapter(
+                person_id=session.person_id,
+                chapter_id=chapter_id,
+                status="completed",
+            )
+            db.add(pc)
+
     # 标记完成并关联故事
     session.status = "completed"
     session.story_id = story.id
@@ -1093,7 +1126,8 @@ def complete_interview(session_id: str, background_tasks: BackgroundTasks, db: S
     db.commit()
 
     # 后台三层异步处理
-    background_tasks.add_task(compile_interview_stories_task, session_id)
+    if background_tasks:
+        background_tasks.add_task(compile_interview_stories_task, session_id)
 
     return InterviewCompleteResponse(
         session_id=session_id,
@@ -2067,13 +2101,114 @@ def update_chapter_status(
     db.commit()
     return {"message": "状态更新成功"}
 
+@app.get("/persons/{person_id}/chapters/{chapter_id}/stories")
+def get_chapter_stories(person_id: str, chapter_id: str, db: Session = Depends(get_db)):
+    """返回该人物该章节关联的所有故事列表"""
+    chapter_stories = db.query(models.ChapterStory).filter(
+        models.ChapterStory.person_id == person_id,
+        models.ChapterStory.chapter_id == chapter_id,
+    ).all()
+
+    story_ids = [cs.story_id for cs in chapter_stories]
+    stories = db.query(models.Story).filter(models.Story.id.in_(story_ids)).all()
+
+    return [{
+        "id": s.id,
+        "title": s.title,
+        "transcript": s.transcript[:200] if s.transcript else None,
+        "year": s.year,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    } for s in stories]
+
+@app.get("/chapters/next/{person_id}")
+def get_next_chapter(person_id: str, db: Session = Depends(get_db)):
+    """返回该人物下一个待完成的章节"""
+    # 获取该人物的章节进度
+    person_chapters = db.query(models.PersonChapter).filter(
+        models.PersonChapter.person_id == person_id,
+        models.PersonChapter.status == "not_started",
+    ).all()
+
+    if person_chapters:
+        # 找到第一个 not_started 的章节
+        pc = person_chapters[0]
+        chapter = db.query(models.AutobiographyChapter).filter(
+            models.AutobiographyChapter.id == pc.chapter_id,
+        ).first()
+        if chapter:
+            return {
+                "chapter_id": chapter.id,
+                "order_index": chapter.order_index,
+                "title": chapter.title,
+                "description": chapter.description,
+                "opening_questions": json.loads(chapter.opening_questions) if chapter.opening_questions else [],
+            }
+
+    # 检查是否有未创建的章节记录
+    all_chapters = db.query(models.AutobiographyChapter).order_by(
+        models.AutobiographyChapter.order_index
+    ).all()
+
+    for c in all_chapters:
+        exists = db.query(models.PersonChapter).filter(
+            models.PersonChapter.person_id == person_id,
+            models.PersonChapter.chapter_id == c.id,
+        ).first()
+        if not exists:
+            return {
+                "chapter_id": c.id,
+                "order_index": c.order_index,
+                "title": c.title,
+                "description": c.description,
+                "opening_questions": json.loads(c.opening_questions) if c.opening_questions else [],
+            }
+
+    return None
+
 @app.post("/stories", response_model=Story)
 def create_story(story: StoryCreate, db: Session = Depends(get_db)):
     """新增故事"""
-    db_story = models.Story(**story.model_dump())
+    story_data = story.model_dump()
+    chapter_id = story_data.pop("chapter_id", None)
+
+    db_story = models.Story(**story_data)
     db.add(db_story)
     db.commit()
     db.refresh(db_story)
+
+    # 如果有 chapter_id，关联章节并更新状态
+    if chapter_id and db_story.person_ids:
+        # 获取关联的人物ID
+        person_ids = json.loads(db_story.person_ids) if db_story.person_ids else []
+        if person_ids:
+            person_id = person_ids[0]
+
+            # 创建章节故事关联
+            cs = models.ChapterStory(
+                person_id=person_id,
+                chapter_id=chapter_id,
+                story_id=db_story.id,
+            )
+            db.add(cs)
+
+            # 更新人物章节状态为 completed
+            pc = db.query(models.PersonChapter).filter(
+                models.PersonChapter.person_id == person_id,
+                models.PersonChapter.chapter_id == chapter_id,
+            ).first()
+            if pc:
+                pc.status = "completed"
+                pc.updated_at = datetime.utcnow()
+            else:
+                pc = models.PersonChapter(
+                    person_id=person_id,
+                    chapter_id=chapter_id,
+                    status="completed",
+                )
+                db.add(pc)
+
+            db.commit()
+
     return db_story
 
 @app.post("/stories/full")
