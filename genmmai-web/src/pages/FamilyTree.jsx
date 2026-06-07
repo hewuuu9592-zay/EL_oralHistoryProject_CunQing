@@ -25,6 +25,7 @@ const FamilyTree = () => {
   const [chapters, setChapters] = useState([])
   const [totalStories, setTotalStories] = useState(0)
   const [showChapterList, setShowChapterList] = useState(false)
+  const [showMyInfo, setShowMyInfo] = useState(false)
 
   // 加载数据
   const fetchData = async (personId) => {
@@ -134,6 +135,14 @@ const FamilyTree = () => {
             </button>
           ))}
         </div>
+
+        {/* 我的信息按钮 */}
+        <button
+          onClick={() => setShowMyInfo(true)}
+          className="h-12 border-t border-[#E5DED3] flex items-center justify-center text-[#5C3D2E] hover:bg-[#E8DFD0]"
+        >
+          我的信息
+        </button>
 
         {/* 收起按钮 */}
         <button
@@ -284,6 +293,120 @@ const FamilyTree = () => {
               <p className="text-center text-gray-400">家族地图页面</p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* 我的信息弹窗 */}
+      {showMyInfo && currentPerson && (
+        <MyInfoModal
+          person={currentPerson}
+          onSave={async (data) => {
+            await updatePerson(currentPersonId, data)
+            fetchData(currentPersonId)
+            setShowMyInfo(false)
+          }}
+          onClose={() => setShowMyInfo(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// 我的信息弹窗
+const MyInfoModal = ({ person, onSave, onClose }) => {
+  const [form, setForm] = useState({
+    name: person?.name || '',
+    birth_year: person?.birth_year || '',
+    bio: person?.bio || '',
+    avatar_url: person?.avatar_url || '',
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async () => {
+    if (!form.name.trim()) {
+      setError('请输入姓名')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      await onSave({
+        name: form.name.trim(),
+        birth_year: form.birth_year ? parseInt(form.birth_year) : null,
+        bio: form.bio.trim() || null,
+        avatar_url: form.avatar_url || null,
+      })
+    } catch (err) {
+      setError(err.response?.data?.detail || '保存失败，请重试')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl p-6 w-[400px] max-h-[90vh] overflow-y-auto">
+        <h3 className="text-xl font-serif text-[#5C3D2E] mb-6">我的信息</h3>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">姓名</label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">出生年份</label>
+            <input
+              type="number"
+              value={form.birth_year}
+              onChange={(e) => setForm({ ...form, birth_year: e.target.value })}
+              className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">简介</label>
+            <textarea
+              value={form.bio}
+              onChange={(e) => setForm({ ...form, bio: e.target.value })}
+              className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E] resize-none"
+              rows={3}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">头像链接</label>
+            <input
+              type="text"
+              value={form.avatar_url}
+              onChange={(e) => setForm({ ...form, avatar_url: e.target.value })}
+              className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
+            />
+          </div>
+
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2 border border-[#5C3D2E] text-[#5C3D2E] rounded-lg hover:bg-[#F5F1E9]"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="flex-1 py-2 bg-[#5C3D2E] text-white rounded-lg hover:bg-[#4A3125] disabled:opacity-50"
+          >
+            {loading ? '保存中...' : '保存'}
+          </button>
         </div>
       </div>
     </div>

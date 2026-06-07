@@ -8,17 +8,29 @@ import InterviewPage from './pages/InterviewPage'
 import Settings from './pages/Settings'
 import Welcome from './pages/Welcome'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { getPerson } from './api'
 import './App.css'
 
 function App() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // 启动检测
-    const currentPersonId = localStorage.getItem('current_person_id')
-    if (!currentPersonId) {
-      navigate('/welcome', { replace: true })
+    // 启动检测：验证 current_person_id 对应的 person 是否存在
+    const checkPerson = async () => {
+      const currentPersonId = localStorage.getItem('current_person_id')
+      if (!currentPersonId) {
+        navigate('/welcome', { replace: true })
+        return
+      }
+      try {
+        await getPerson(currentPersonId)
+      } catch (error) {
+        // person 不存在，清除 localStorage 并跳转 welcome
+        localStorage.removeItem('current_person_id')
+        navigate('/welcome', { replace: true })
+      }
     }
+    checkPerson()
   }, [navigate])
 
   return (

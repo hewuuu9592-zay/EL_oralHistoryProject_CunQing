@@ -440,6 +440,10 @@ def delete_person(person_id: str, force: bool = False, db: Session = Depends(get
     if db_person is None:
         raise HTTPException(status_code=404, detail="人物不存在")
 
+    # 保护：不能删除主用户
+    if db_person.is_owner:
+        raise HTTPException(status_code=403, detail="无法删除主用户")
+
     # 检查 story_persons 表中是否有该人物的关联记录
     sp_records = db.query(models.StoryPerson).filter(models.StoryPerson.person_id == person_id).all()
     if sp_records:
@@ -2970,7 +2974,7 @@ def read_family_migrations_persons(db: Session = Depends(get_db)):
 def get_family_members(db: Session = Depends(get_db)):
     """返回所有非主用户的人物，按关系分组"""
     members = db.query(models.Person).filter(
-        models.Person.is_owner == False
+        (models.Person.is_owner == False) | (models.Person.is_owner.is_(None))
     ).all()
 
     groups = {
