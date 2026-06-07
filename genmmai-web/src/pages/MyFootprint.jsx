@@ -53,7 +53,7 @@ const FitBounds = ({ migrations }) => {
 
 // 确认弹窗
 const ConfirmModal = ({ title, message, onConfirm, onCancel }) => (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1100]">
     <div className="bg-white rounded-lg p-6 w-80">
       <h3 className="text-lg font-bold text-[#4A3728] mb-2">{title}</h3>
       <p className="text-sm text-gray-600 mb-4">{message}</p>
@@ -147,7 +147,7 @@ const AddMigrationModal = ({ personId, migration, chapters, onSave, onCancel }) 
   const hasSelectedPlace = form.latitude && form.longitude
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1100]">
       <div className="bg-white rounded-xl p-6 w-[400px] max-h-[90vh] overflow-y-auto">
         <h3 className="text-xl font-serif text-[#5C3D2E] mb-6">
           {migration ? '编辑地点' : '添加地点'}
@@ -417,7 +417,7 @@ const MyFootprint = ({ personId }) => {
   return (
     <div className="h-full flex flex-col">
       {/* 地图区域 */}
-      <div className="h-[60%] relative">
+      <div className="h-[60%] relative pt-12">
         {/* 章节筛选条 */}
         <div className="absolute top-2 left-2 right-2 z-[1000] flex gap-2 overflow-x-auto pb-2">
           <button
@@ -449,7 +449,7 @@ const MyFootprint = ({ personId }) => {
         {/* 地图 */}
         <MapView migrations={allMigrations} selectedChapter={selectedChapter} chapters={chapters} />
 
-        {/* 图例 */}
+        {/* 图例
         <div className="absolute bottom-4 right-4 z-[1000] bg-white/90 rounded-lg p-2 text-xs">
           <div className="font-medium text-[#5C3D2E] mb-1">图例</div>
           <div className="flex flex-wrap gap-1 max-w-[150px]">
@@ -460,7 +460,7 @@ const MyFootprint = ({ personId }) => {
               </div>
             ))}
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* 下方列表区域 */}
