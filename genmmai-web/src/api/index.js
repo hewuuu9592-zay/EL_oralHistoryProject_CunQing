@@ -110,7 +110,7 @@ export const getNextQuestion = (sessionId, roundId) => {
   const data = roundId ? { round_id: roundId } : {};
   return api.post(`/interviews/${sessionId}/next-question`, data);
 };
-export const completeInterview = (sessionId) => api.post(`/interviews/${sessionId}/complete`);
+export const completeInterview = (sessionId, data = {}) => api.post(`/interviews/${sessionId}/complete`, data);
 export const abandonInterview = (sessionId) => api.post(`/interviews/${sessionId}/abandon`);
 export const deleteInterview = (sessionId) => api.delete(`/interviews/${sessionId}`);
 export const getPersonInterviews = (personId) => api.get(`/persons/${personId}/interviews`);

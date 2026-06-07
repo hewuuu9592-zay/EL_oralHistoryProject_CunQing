@@ -9,7 +9,8 @@ const RecordStory = () => {
   const { themes, getThemeStyle, loading: themeLoading } = useTheme();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const personId = searchParams.get('personId');
+  const personId = searchParams.get('personId') || localStorage.getItem('current_person_id');
+  const chapterId = searchParams.get('chapterId');
   const [person, setPerson] = useState(null);
   const [persons, setPersons] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -304,6 +305,7 @@ const RecordStory = () => {
         person_ids: JSON.stringify(selectedPersons),
         related_history_id: selectedHistoryEvent?.id || null,
         related_history: selectedHistoryEvent?.title || null,
+        chapter_id: chapterId || null,
       });
 
       // 故事人物关联已经在后端上传时创建了部分，这里补充其他关联
@@ -337,7 +339,7 @@ const RecordStory = () => {
       }
 
       // 没有提取到迁徙记录，直接跳转
-      navigate(`/person/${personId}`);
+      navigate('/');
     } catch (err) {
       console.error('保存故事失败:', err);
       alert('保存失败，请重试');
@@ -363,7 +365,7 @@ const RecordStory = () => {
           }))
         });
       }
-      navigate(`/person/${personId}`);
+      navigate('/');
     } catch (err) {
       console.error('保存迁徙记录失败:', err);
       alert('保存迁徙记录失败，请重试');
@@ -372,7 +374,7 @@ const RecordStory = () => {
 
   // 跳过迁徙直接跳转
   const handleSkipMigrations = () => {
-    navigate(`/person/${personId}`);
+    navigate('/');
   };
 
   // 切换迁徙选择

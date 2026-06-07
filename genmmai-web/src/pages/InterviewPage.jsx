@@ -8,7 +8,8 @@ import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 const InterviewPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const personId = searchParams.get('personId');
+  const personId = searchParams.get('personId') || localStorage.getItem('current_person_id');
+  const chapterId = searchParams.get('chapterId');
 
   const [stage, setStage] = useState('loading'); // loading | ready | interviewing | completing | done
   const [selectedThemes, setSelectedThemes] = useState([]);  // 选中的主题
@@ -88,15 +89,16 @@ const InterviewPage = () => {
       }]);
 
       // 然后异步创建采访并生成问题
-      const res = await startInterview(personId, selectedThemes);
-      const data = res.data;
+      const reqData = chapterId ? { chapter_id: chapterId } : (selectedThemes.length > 0 ? { preferred_themes: selectedThemes } : {});
+      const res = await startInterview(personId, reqData);
+      const sessionData = res.data;
       setSession({
-        id: data.session_id,
-        topic_hint: data.topic_hint,
+        id: sessionData.session_id,
+        topic_hint: sessionData.topic_hint,
       });
       setRounds([{
-        round_index: data.round_index,
-        question: data.question,
+        round_index: sessionData.round_index,
+        question: sessionData.question,
         transcript: null,
         audio_url: null,
       }]);
@@ -302,8 +304,8 @@ const InterviewPage = () => {
     if (!session) return;
     try {
       setSaving(true);
-      await completeInterview(session.id);
-      navigate(`/person/${personId}`);
+      await completeInterview(session.id, chapterId ? { chapter_id: chapterId } : {});
+      navigate('/');
     } catch (e) {
       console.error('保存失败:', e);
       alert('保存失败，请重试');
@@ -331,7 +333,7 @@ const InterviewPage = () => {
     setPollTimeout(false);
     try {
       // 调用 complete 接口，获取 story_id
-      const res = await completeInterview(session.id);
+      const res = await completeInterview(session.id, chapterId ? { chapter_id: chapterId } : {});
       console.log('complete res:', res.data);
       const storyId = res.data?.story_id;
       console.log('storyId:', storyId);
