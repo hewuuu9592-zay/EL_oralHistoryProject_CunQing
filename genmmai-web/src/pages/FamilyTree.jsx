@@ -298,68 +298,69 @@ const MyInfoModal = ({ person, onSave, onClose }) => {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 w-[400px] max-h-[90vh] overflow-y-auto">
-        <h3 className="text-xl font-serif text-[#5C3D2E] mb-6">我的信息</h3>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1100]">
+      <div className="bg-white rounded-xl w-[400px] max-h-[90vh] flex flex-col">
+        
+        <div className="p-6 pb-2">
+          <h3 className="text-xl font-serif text-[#5C3D2E]">我的信息</h3>
+        </div>
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">姓名</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
-            />
-          </div>
+        <div className="flex-1 overflow-y-auto px-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">姓名</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">出生年份</label>
-            <input
-              type="number"
-              value={form.birth_year}
-              onChange={(e) => setForm({ ...form, birth_year: e.target.value })}
-              className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
-            />
-          </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">出生年份</label>
+              <input
+                type="number"
+                value={form.birth_year}
+                onChange={(e) => setForm({ ...form, birth_year: e.target.value })}
+                className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">简介</label>
-            <textarea
-              value={form.bio}
-              onChange={(e) => setForm({ ...form, bio: e.target.value })}
-              className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E] resize-none"
-              rows={3}
-            />
-          </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">简介</label>
+              <textarea
+                value={form.bio}
+                onChange={(e) => setForm({ ...form, bio: e.target.value })}
+                className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E] resize-none"
+                rows={3}
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">头像链接</label>
-            <input
-              type="text"
-              value={form.avatar_url}
-              onChange={(e) => setForm({ ...form, avatar_url: e.target.value })}
-              className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
-            />
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">头像链接</label>
+              <input
+                type="text"
+                value={form.avatar_url}
+                onChange={(e) => setForm({ ...form, avatar_url: e.target.value })}
+                className="w-full px-4 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
+              />
+            </div>
           </div>
+        
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
         </div>
 
-        <div className="flex gap-3 mt-6">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2 border border-[#5C3D2E] text-[#5C3D2E] rounded-lg hover:bg-[#F5F1E9]"
-          >
-            取消
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="flex-1 py-2 bg-[#5C3D2E] text-white rounded-lg hover:bg-[#4A3125] disabled:opacity-50"
-          >
-            {loading ? '保存中...' : '保存'}
-          </button>
+        <div className="p-6 pt-2">
+        <div className="flex gap-3">
+            <button onClick={onClose} className="flex-1 py-2 border border-[#5C3D2E] text-[#5C3D2E] rounded-lg hover:bg-[#F5F1E9]">
+              取消
+            </button>
+            <button onClick={handleSubmit} disabled={loading} className="flex-1 py-2 bg-[#5C3D2E] text-white rounded-lg hover:bg-[#4A3125] disabled:opacity-50">
+              {loading ? '保存中...' : '保存'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
