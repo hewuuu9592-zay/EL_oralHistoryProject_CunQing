@@ -1589,34 +1589,83 @@ def get_migrations_by_chapter(person_id: str, db: Session = Depends(get_db)):
 
 @app.post("/persons/{person_id}/migrations", response_model=MigrationRecordResponse)
 def create_migration_record(person_id: str, migration: MigrationRecordCreate, db: Session = Depends(get_db)):
-    """新增一条迁徙记录"""
+    """新增一条迁徙记录（同地点追加事件而非新建记录）"""
+    import json as json_lib
+
     # 检查人物是否存在
     person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if not person:
         raise HTTPException(status_code=404, detail="人物不存在")
 
-    # 如果没有提供坐标，尝试调用高德 API 获取
-    latitude = migration.latitude
-    longitude = migration.longitude
-    if not latitude or not longitude:
-        geo_result = geocode_place(migration.place_name)
-        if geo_result:
-            latitude = geo_result["latitude"]
-            longitude = geo_result["longitude"]
+    # 构建新事件
+    new_event = {
+        "year": migration.year,
+        "description": migration.description,
+        "source_story_id": None  # 手动添加的没有 source_story_id
+    }
 
-    db_record = models.MigrationRecord(
-        person_id=person_id,
-        place_name=migration.place_name,
-        latitude=latitude,
-        longitude=longitude,
-        year=migration.year,
-        description=migration.description,
-        chapter_id=migration.chapter_id
-    )
-    db.add(db_record)
-    db.commit()
-    db.refresh(db_record)
-    return db_record
+    # 查询该 person_id 下是否有相同 place_name 的记录
+    existing = db.query(models.MigrationRecord).filter(
+        models.MigrationRecord.person_id == person_id,
+        models.MigrationRecord.place_name == migration.place_name
+    ).first()
+
+    if existing:
+        # 已有记录，追加事件到 events
+        events = []
+        if existing.events:
+            try:
+                events = json_lib.loads(existing.events)
+            except:
+                events = []
+
+        # 检查是否已有相同 source_story_id 的条目，有则跳过
+        if new_event["source_story_id"]:
+            for e in events:
+                if e.get("source_story_id") == new_event["source_story_id"]:
+                    # 已存在，返回现有记录
+                    return existing
+
+        # 追加新事件
+        events.append(new_event)
+        existing.events = json_lib.dumps(events, ensure_ascii=False)
+
+        # 更新顶层 year 和 description（第一条事件）
+        if events:
+            existing.year = events[0].get("year")
+            existing.description = events[0].get("description")
+
+        db.commit()
+        db.refresh(existing)
+        return existing
+    else:
+        # 没有记录，新建一条
+        # 如果没有提供坐标，尝试调用高德 API 获取
+        latitude = migration.latitude
+        longitude = migration.longitude
+        if not latitude or not longitude:
+            geo_result = geocode_place(migration.place_name)
+            if geo_result:
+                latitude = geo_result["latitude"]
+                longitude = geo_result["longitude"]
+
+        # 初始化 events 数组
+        events = [new_event]
+
+        db_record = models.MigrationRecord(
+            person_id=person_id,
+            place_name=migration.place_name,
+            latitude=latitude,
+            longitude=longitude,
+            year=migration.year,
+            description=migration.description,
+            chapter_id=migration.chapter_id,
+            events=json_lib.dumps(events, ensure_ascii=False)
+        )
+        db.add(db_record)
+        db.commit()
+        db.refresh(db_record)
+        return db_record
 
 
 @app.delete("/persons/{person_id}/migrations/{mid}")
@@ -1912,7 +1961,9 @@ def extract_story_migrations(story_id: str, db: Session = Depends(get_db)):
 
 @app.post("/stories/{story_id}/confirm-migrations")
 def confirm_story_migrations(story_id: str, request: MigrateConfirmRequest, db: Session = Depends(get_db)):
-    """确认并写入迁徙记录"""
+    """确认并写入迁徙记录（同地点追加事件而非新建记录）"""
+    import json as json_lib
+
     # 检查故事是否存在
     story = db.query(models.Story).filter(models.Story.id == story_id).first()
     if not story:
@@ -1928,20 +1979,64 @@ def confirm_story_migrations(story_id: str, request: MigrateConfirmRequest, db: 
 
     written_count = 0
     for migration in request.migrations:
-        # 为每个人物写入一条记录
+        # 为每个人物处理记录
         for person_id in migration.person_ids:
-            db_record = models.MigrationRecord(
-                person_id=person_id,
-                place_name=migration.place_name,
-                latitude=migration.latitude,
-                longitude=migration.longitude,
-                year=migration.year,
-                description=migration.description,
-                source_story_id=story_id,
-                chapter_id=chapter_id
-            )
-            db.add(db_record)
-            written_count += 1
+            # 构建新事件
+            new_event = {
+                "year": migration.year,
+                "description": migration.description,
+                "source_story_id": story_id
+            }
+
+            # 查询该 person_id 下是否有相同 place_name 的记录
+            existing = db.query(models.MigrationRecord).filter(
+                models.MigrationRecord.person_id == person_id,
+                models.MigrationRecord.place_name == migration.place_name
+            ).first()
+
+            if existing:
+                # 已有记录，追加事件到 events
+                events = []
+                if existing.events:
+                    try:
+                        events = json_lib.loads(existing.events)
+                    except:
+                        events = []
+
+                # 检查是否已有相同 source_story_id 的条目，有则跳过
+                skip = False
+                for e in events:
+                    if e.get("source_story_id") == story_id:
+                        skip = True
+                        break
+                if skip:
+                    continue
+
+                # 追加新事件
+                events.append(new_event)
+                existing.events = json_lib.dumps(events, ensure_ascii=False)
+
+                # 更新顶层 year 和 description（第一条事件）
+                if events:
+                    existing.year = events[0].get("year")
+                    existing.description = events[0].get("description")
+
+                written_count += 1
+            else:
+                # 没有记录，新建一条
+                db_record = models.MigrationRecord(
+                    person_id=person_id,
+                    place_name=migration.place_name,
+                    latitude=migration.latitude,
+                    longitude=migration.longitude,
+                    year=migration.year,
+                    description=migration.description,
+                    source_story_id=story_id,
+                    chapter_id=chapter_id,
+                    events=json_lib.dumps([new_event], ensure_ascii=False)
+                )
+                db.add(db_record)
+                written_count += 1
 
     db.commit()
     return {"written_count": written_count}
@@ -1997,13 +2092,15 @@ def get_unextracted_stories(person_id: str, db: Session = Depends(get_db)):
 
 @app.post("/persons/{person_id}/batch-extract-migrations")
 def batch_extract_migrations(person_id: str, db: Session = Depends(get_db)):
-    """一键提取并写入该人物所有故事的迁徙记录"""
+    """一键提取并写入该人物所有故事的迁徙记录（同地点追加事件而非新建记录）"""
+    import json as json_lib
+
     # 检查人物是否存在
     person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if not person:
         raise HTTPException(status_code=404, detail="人物不存在")
 
-    # 获取未提取的故事
+    # 获取所有故事（不再过滤已提取的，因为现在是追加而非覆盖）
     sp_records = db.query(models.StoryPerson).filter(
         models.StoryPerson.person_id == person_id
     ).all()
@@ -2012,26 +2109,14 @@ def batch_extract_migrations(person_id: str, db: Session = Depends(get_db)):
     if not story_ids:
         return {"written_count": 0, "stories_count": 0}
 
-    # 找出已有迁徙记录来源的故事 ID
-    extracted_story_ids = db.query(models.MigrationRecord.source_story_id).filter(
-        models.MigrationRecord.source_story_id.in_(story_ids),
-        models.MigrationRecord.source_story_id.isnot(None)
-    ).distinct().all()
-    extracted_story_ids = [s[0] for s in extracted_story_ids]
-
-    # 过滤掉已提取的故事
-    unextracted_ids = [sid for sid in story_ids if sid not in extracted_story_ids]
-
-    if not unextracted_ids:
-        return {"written_count": 0, "stories_count": 0}
-
-    written_count = 0
+    # 获取有转录内容的故事
     target_stories = db.query(models.Story).filter(
-        models.Story.id.in_(unextracted_ids),
+        models.Story.id.in_(story_ids),
         models.Story.transcript.isnot(None),
         models.Story.transcript != ""
     ).all()
 
+    written_count = 0
     for story in target_stories:
         # 获取该故事关联的人物列表
         story_persons = db.query(models.StoryPerson).filter(
@@ -2065,20 +2150,64 @@ def batch_extract_migrations(person_id: str, db: Session = Depends(get_db)):
                     latitude = geo_result["latitude"]
                     longitude = geo_result["longitude"]
 
-            # 为该故事关联的每个人物写入记录
+            # 构建新事件
+            new_event = {
+                "year": item.get("year"),
+                "description": item.get("description"),
+                "source_story_id": story.id
+            }
+
+            # 为该故事关联的每个人物处理记录
             for pid in story_person_ids:
-                db_record = models.MigrationRecord(
-                    person_id=pid,
-                    place_name=place_name,
-                    latitude=latitude,
-                    longitude=longitude,
-                    year=item.get("year"),
-                    description=item.get("description"),
-                    source_story_id=story.id,
-                    chapter_id=chapter_id
-                )
-                db.add(db_record)
-                written_count += 1
+                # 查询该 person_id 下是否有相同 place_name 的记录
+                existing = db.query(models.MigrationRecord).filter(
+                    models.MigrationRecord.person_id == pid,
+                    models.MigrationRecord.place_name == place_name
+                ).first()
+
+                if existing:
+                    # 已有记录，追加事件到 events
+                    events = []
+                    if existing.events:
+                        try:
+                            events = json_lib.loads(existing.events)
+                        except:
+                            events = []
+
+                    # 检查是否已有相同 source_story_id 的条目，有则跳过
+                    skip = False
+                    for e in events:
+                        if e.get("source_story_id") == story.id:
+                            skip = True
+                            break
+                    if skip:
+                        continue
+
+                    # 追加新事件
+                    events.append(new_event)
+                    existing.events = json_lib.dumps(events, ensure_ascii=False)
+
+                    # 更新顶层 year 和 description（第一条事件）
+                    if events:
+                        existing.year = events[0].get("year")
+                        existing.description = events[0].get("description")
+
+                    written_count += 1
+                else:
+                    # 没有记录，新建一条
+                    db_record = models.MigrationRecord(
+                        person_id=pid,
+                        place_name=place_name,
+                        latitude=latitude,
+                        longitude=longitude,
+                        year=item.get("year"),
+                        description=item.get("description"),
+                        source_story_id=story.id,
+                        chapter_id=chapter_id,
+                        events=json_lib.dumps([new_event], ensure_ascii=False)
+                    )
+                    db.add(db_record)
+                    written_count += 1
 
     db.commit()
     return {"written_count": written_count, "stories_count": len(target_stories)}
