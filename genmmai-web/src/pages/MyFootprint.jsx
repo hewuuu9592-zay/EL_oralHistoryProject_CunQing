@@ -531,7 +531,7 @@ const MyFootprint = ({ personId }) => {
   return (
     <div className="h-full flex flex-col">
       {/* 地图区域 */}
-      <div className="h-[50%] relative">
+      <div className="h-[50%] relative bg-red-100">
         <MapView migrations={migrations} chapters={chapters} />
       </div>
 

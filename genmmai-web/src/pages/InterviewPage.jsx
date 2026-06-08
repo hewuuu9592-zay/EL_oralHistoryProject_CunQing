@@ -434,12 +434,12 @@ const InterviewPage = () => {
             }
           </div>
           <h1 className="text-xl font-bold text-[#4A3728] mb-1">{person?.name}</h1>
-          <p className="text-[#8B7355] text-sm mb-6">今天我们来聊聊TA的故事</p>
+          <p className="text-[#8B7355] text-sm mb-6 mt-2">今天我们来聊聊您的故事</p>
 
           {/* 开始按钮 */}
           <button
             onClick={handleStart}
-            className="w-40 h-40 rounded-full bg-[#4A3728] text-white text-lg font-bold shadow-lg hover:bg-[#5A4738] transition-all"
+            className="w-40 h-40 rounded-full bg-[#4A3728] text-white text-lg font-bold shadow-lg hover:bg-[#5A4738] transition-all mt-10"
           >
             开始采访
           </button>

@@ -88,7 +88,7 @@ const FamilyTree = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2]">
+    <div className="h-screen bg-[#FAF7F2] flex flex-col">
       {/* 侧边栏 */}
       <div
         className={`fixed left-0 top-0 h-full flex flex-col bg-[#FAF7F2] border-r border-[#E5DED3] z-40 transition-all duration-300 ${
@@ -147,7 +147,7 @@ const FamilyTree = () => {
       </button>
 
       {/* 主内容区 */}
-      <div className={`flex flex-col overflow-hidden transition-all duration-300 ${sidebarExpanded ? 'ml-[180px]' : 'ml-0'}`}>
+      <div className={`flex flex-col overflow-hidden transition-all duration-300 h-full ${sidebarExpanded ? 'ml-[180px]' : 'ml-0'}`}>
         {/* 顶部栏 */}
         <div className="h-16 bg-white border-b border-[#E5DED3] flex items-center justify-between px-6">
           <div className="text-[#5C3D2E] font-medium">
