@@ -251,29 +251,40 @@ const InterviewPage = () => {
       roundId = currentRound.id;
     }
 
+    // 1. 先把新轮次以 loading 状态推入 rounds 数组
+    const loadingRound = {
+      id: null,
+      round_index: rounds.length + 1,
+      question: null,
+      transcript: null,
+      audio_url: null,
+      questionLoading: true,
+    };
+    setRounds(prev => [...prev, loadingRound]);
+    setCurrentRound(null);
+    setAudioBlob(null);
+    setAudioUrl(null);
+    setRecordingTime(0);
+    setTranscribing(false);
+
+    // // 2. 立即滚动到底部
+    // scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+
+    // 3. 然后异步请求 AI，拿到结果后更新最后一轮
     try {
       const res = await getNextQuestion(session.id, roundId);
       const data = res.data;
 
-      const newRound = {
-        id: null,  // 提交回答后才有 id
-        round_index: data.round_index,
-        question: data.question,
-        transcript: null,
-        audio_url: null,
-      };
-
-      setRounds(prev => [...prev, newRound]);
-      setCurrentRound(null);
-      setAudioBlob(null);
-      setAudioUrl(null);
-      setRecordingTime(0);
-      setTranscribing(false);
-
-      // 自动滚动到底部
-      setTimeout(() => {
-        scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+      setRounds(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          question: data.question,
+          round_index: data.round_index,
+          questionLoading: false,
+        };
+        return updated;
+      });
 
       if (data.should_end) {
         // AI 建议结束，但允许用户继续
@@ -526,7 +537,13 @@ const InterviewPage = () => {
                 <div className="flex items-start gap-2 mb-2">
                   <div className="w-7 h-7 rounded-full bg-gray-300 flex-shrink-0 flex items-center justify-center text-xs">🎙️</div>
                   <div className="bg-gray-100 rounded-xl px-3 py-2 text-sm text-[#4A3728] max-w-[80%]">
-                    {r.question || '正在生成问题...'}
+                    {r.questionLoading ? (
+                      <div className="flex gap-1 items-center">
+                        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay:'0ms'}}/>
+                        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay:'150ms'}}/>
+                        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay:'300ms'}}/>
+                      </div>
+                    ) : r.question}
                   </div>
                 </div>
                 {/* 老人回答：右侧气泡 */}
@@ -627,12 +644,21 @@ const InterviewPage = () => {
           {currentRound?.status === 'done' && (
             <div className="space-y-2">
               <div className="flex gap-3">
-                <button
-                  onClick={() => handleNextQuestion(false)}
-                  className="flex-1 py-3 bg-[#4A3728] text-white rounded font-bold"
-                >
-                  继续下一问 →
-                </button>
+                {rounds.length < maxRounds ? (
+                  <button
+                    onClick={() => handleNextQuestion(false)}
+                    className="flex-1 py-3 bg-[#4A3728] text-white rounded font-bold"
+                  >
+                    继续下一问 →
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleComplete}
+                    className="flex-1 py-3 bg-[#4A3728] text-white rounded font-bold"
+                  >
+                    完成采访
+                  </button>
+                )}
               </div>
               <div className="flex gap-3">
                 <button
@@ -641,12 +667,14 @@ const InterviewPage = () => {
                 >
                   放弃
                 </button>
-                <button
-                  onClick={handleComplete}
-                  className="flex-1 py-2 text-gray-400 text-sm"
-                >
-                  结束采访
-                </button>
+                {rounds.length < maxRounds && (
+                  <button
+                    onClick={handleComplete}
+                    className="flex-1 py-2 text-gray-400 text-sm"
+                  >
+                    结束采访
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -827,10 +855,10 @@ const InterviewPage = () => {
           </p> */}
 
           <button
-            onClick={() => navigate(`/person/${personId}`)}
+            onClick={() => navigate('/')}
             className="px-6 py-3 bg-[#4A3728] text-white rounded font-bold"
           >
-            返回人物主页
+            返回主页
           </button>
         </div>
       </div>
