@@ -832,7 +832,7 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
         status="active",
         topic_hint=topic_hint,
         chapter_id=chapter_id,
-        round_count=1,
+        round_count=0,
     )
     db.add(session)
     db.commit()
