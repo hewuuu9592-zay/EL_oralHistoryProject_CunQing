@@ -222,7 +222,7 @@ const FamilyTree = () => {
                       <div
                         key={i}
                         onClick={() => setSelectedChapterIndex(i)}
-                        className={`flex-1 h-2 rounded-full transition-colors cursor-pointer hover:opacity-70 ${
+                        className={`flex-1 h-4 rounded-full transition-colors cursor-pointer hover:opacity-70 ${
                           i === selectedChapterIndex ? 'bg-[#D4A574]' :  // 当前选中：深棕色
                           'bg-gray-200'                                    // 未开始：灰色
                         }`}
