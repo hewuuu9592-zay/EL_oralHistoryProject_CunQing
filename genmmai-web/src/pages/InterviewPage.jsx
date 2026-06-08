@@ -294,7 +294,7 @@ const InterviewPage = () => {
     if (!session) return;
     try {
       await abandonInterview(session.id);
-      navigate(`/person/${personId}`);
+      navigate('/');
     } catch (e) {
       console.error('放弃失败:', e);
     }
@@ -422,7 +422,7 @@ const InterviewPage = () => {
     return (
       <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
         <div className="bg-white border-b border-[#E5DED3] px-4 py-4">
-          <button onClick={() => navigate(`/person/${personId}`)} className="text-[#4A3728]">
+          <button onClick={() => navigate('/')} className="text-[#4A3728]">
             ← 返回
           </button>
         </div>

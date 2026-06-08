@@ -207,7 +207,7 @@ const FamilyTree = () => {
                       >
                         自由记录
                       </button>
-                                          </div>
+                    </div>
                   </div>
                 ) : null
               })()}
