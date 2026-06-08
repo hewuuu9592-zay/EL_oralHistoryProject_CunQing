@@ -438,7 +438,7 @@ const InterviewPage = () => {
           <h1 className="text-xl font-bold text-[#4A3728] mb-1">{person?.name}</h1>
           <p className="text-[#8B7355] text-sm mb-6">今天我们来聊聊TA的故事</p>
 
-          {/* 主题选择 */}
+          主题选择
           <div className="w-full max-w-sm mb-6">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-base font-medium text-[#4A3728]">今天想聊什么？</h2>
@@ -498,7 +498,7 @@ const InterviewPage = () => {
       <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
         {/* 顶部进度 */}
         <div className="bg-white border-b border-[#E5DED3] px-4 py-3 flex-shrink-0">
-          <div className="flex items-center justify-between max-w-md mx-auto">
+          <div className="flex items-center justify-between">
             <button onClick={() => setShowExitModal(true)} className="text-[#4A3728] text-sm">
               ← 退出
             </button>
@@ -518,7 +518,7 @@ const InterviewPage = () => {
 
         {/* 对话滚动区域 */}
         <div ref={scrollRef} className="flex-1 overflow-auto p-4">
-          <div className="max-w-md mx-auto space-y-4">
+          <div className="space-y-4">
             {/* 显示所有轮次 */}
             {rounds.map((r, i) => (
               <div key={i}>
@@ -555,103 +555,101 @@ const InterviewPage = () => {
 
         {/* 底部固定操作区 */}
         <div className="bg-white border-t border-[#E5DED3] p-4 flex-shrink-0">
-          <div className="max-w-md mx-auto">
-            {/* 统一录音区域 */}
-            {!currentRound && !transcribing && (
-              <div className="flex flex-col items-center py-2">
-                {/* 待录音状态 */}
-                {!audioUrl && !isRecording && (
-                  <div className="flex flex-col items-center gap-3">
-                    <button
-                      onClick={startRecording}
-                      className="w-20 h-20 rounded-full bg-[#C9A84C] flex items-center justify-center hover:bg-[#D4B85C] transition-all shadow-lg"
-                    >
-                      <div className="w-16 h-16 rounded-full bg-[#D4B85C]" />
-                    </button>
-                    <label className="cursor-pointer px-4 py-2 border border-gray-300 rounded text-sm text-gray-500">
-                      <span>上传录音文件</span>
-                      <input
-                        type="file"
-                        accept="audio/*"
-                        className="hidden"
-                        onChange={handleFileSelect}
-                      />
-                    </label>
-                  </div>
-                )}
-
-                {/* 录音中 */}
-                {isRecording && (
-                  <>
-                    <div className="text-red-500 font-bold mb-2">{formatTime(recordingTime)}</div>
-                    <button
-                      onClick={stopRecording}
-                      className="w-20 h-20 rounded-full bg-red-500 flex items-center justify-center shadow-lg"
-                    >
-                      <div className="w-16 h-16 rounded-full bg-red-600" />
-                    </button>
-                  </>
-                )}
-
-                {/* 已录音 */}
-                {audioUrl && !isRecording && (
-                  <div className="space-y-3 w-full">
-                    <audio src={audioUrl} controls className="w-full" />
-                    <div className="flex gap-3 justify-center">
-                      <button
-                        onClick={handleReRecord}
-                        className="px-4 py-2 border border-gray-300 rounded"
-                      >
-                        重新录制
-                      </button>
-                      <button
-                        onClick={handleSubmit}
-                        disabled={submitting}
-                        className="px-4 py-2 bg-[#4A3728] text-white rounded disabled:opacity-50"
-                      >
-                        {submitting ? '提交中...' : '提交回答'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 转写中 */}
-            {transcribing && (
-              <div className="flex items-center justify-center py-2">
-                <div className="text-[#8B7355]">AI 转写中...</div>
-              </div>
-            )}
-
-            {/* 转写完成 - 显示操作按钮 */}
-            {currentRound?.status === 'done' && (
-              <div className="space-y-2">
-                <div className="flex gap-3">
+          {/* 统一录音区域 */}
+          {!currentRound && !transcribing && (
+            <div className="flex flex-col items-center py-2">
+              {/* 待录音状态 */}
+              {!audioUrl && !isRecording && (
+                <div className="flex flex-col items-center gap-3">
                   <button
-                    onClick={() => handleNextQuestion(false)}
-                    className="flex-1 py-3 bg-[#4A3728] text-white rounded font-bold"
+                    onClick={startRecording}
+                    className="w-20 h-20 rounded-full bg-[#C9A84C] flex items-center justify-center hover:bg-[#D4B85C] transition-all shadow-lg"
                   >
-                    继续下一问 →
+                    <div className="w-16 h-16 rounded-full bg-[#D4B85C]" />
                   </button>
+                  <label className="cursor-pointer px-4 py-2 border border-gray-300 rounded text-sm text-gray-500">
+                    <span>上传录音文件</span>
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      className="hidden"
+                      onChange={handleFileSelect}
+                    />
+                  </label>
                 </div>
-                <div className="flex gap-3">
+              )}
+
+              {/* 录音中 */}
+              {isRecording && (
+                <>
+                  <div className="text-red-500 font-bold mb-2">{formatTime(recordingTime)}</div>
                   <button
-                    onClick={() => setShowExitModal(true)}
-                    className="flex-1 py-2 text-gray-400 text-sm"
+                    onClick={stopRecording}
+                    className="w-20 h-20 rounded-full bg-red-500 flex items-center justify-center shadow-lg"
                   >
-                    放弃
+                    <div className="w-16 h-16 rounded-full bg-red-600" />
                   </button>
-                  <button
-                    onClick={handleComplete}
-                    className="flex-1 py-2 text-gray-400 text-sm"
-                  >
-                    结束采访
-                  </button>
+                </>
+              )}
+
+              {/* 已录音 */}
+              {audioUrl && !isRecording && (
+                <div className="space-y-3 w-full">
+                  <audio src={audioUrl} controls className="w-full" />
+                  <div className="flex gap-3 justify-center">
+                    <button
+                      onClick={handleReRecord}
+                      className="px-4 py-2 border border-gray-300 rounded"
+                    >
+                      重新录制
+                    </button>
+                    <button
+                      onClick={handleSubmit}
+                      disabled={submitting}
+                      className="px-4 py-2 bg-[#4A3728] text-white rounded disabled:opacity-50"
+                    >
+                      {submitting ? '提交中...' : '提交回答'}
+                    </button>
+                  </div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* 转写中 */}
+          {transcribing && (
+            <div className="flex items-center justify-center py-2">
+              <div className="text-[#8B7355]">AI 转写中...</div>
+            </div>
+          )}
+
+          {/* 转写完成 - 显示操作按钮 */}
+          {currentRound?.status === 'done' && (
+            <div className="space-y-2">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleNextQuestion(false)}
+                  className="flex-1 py-3 bg-[#4A3728] text-white rounded font-bold"
+                >
+                  继续下一问 →
+                </button>
               </div>
-            )}
-          </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowExitModal(true)}
+                  className="flex-1 py-2 text-gray-400 text-sm"
+                >
+                  放弃
+                </button>
+                <button
+                  onClick={handleComplete}
+                  className="flex-1 py-2 text-gray-400 text-sm"
+                >
+                  结束采访
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 退出确认弹窗 */}

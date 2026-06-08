@@ -464,15 +464,12 @@ const RecordStory = () => {
       <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
         {/* 顶部导航 */}
         <div className="bg-white border-b border-[#E5DED3] px-4 py-4">
-          <div className="max-w-md mx-auto flex items-center justify-between">
-            <button
-              onClick={() => setStage('record')}
-              className="text-[#4A3728] hover:opacity-70"
-            >
+          <div className="flex items-center justify-between">
+            <button onClick={() => setStage('record')} className="text-[#4A3728] hover:opacity-70">
               ← 返回
             </button>
             <span className="text-[#4A3728] font-medium">确认标注</span>
-            <div className="w-12" />
+            <div className="w-12" />  {/* 为了平衡左右，保留占位 */}
           </div>
         </div>
 
@@ -492,7 +489,7 @@ const RecordStory = () => {
 
         {/* 表单内容 */}
         <div className="flex-1 overflow-auto p-4">
-          <div className="max-w-md mx-auto space-y-4">
+          <div className="space-y-4">
             {/* 转录文字 */}
             <div>
               <label className="text-xs text-gray-500">AI 转录结果（可修改）</label>
@@ -524,9 +521,9 @@ const RecordStory = () => {
                 )}
                 <span className="font-medium">
                   {aiTagStatus === 'processing' ? 'AI 标注中...' :
-                   aiTagStatus === 'done' ? '已自动标注' :
-                   aiTagStatus === 'failed' ? '标注失败，请手动填写' :
-                   '一键 AI 标注（自动填入年份与主题）'}
+                  aiTagStatus === 'done' ? '已自动标注' :
+                  aiTagStatus === 'failed' ? '标注失败，请手动填写' :
+                  '一键 AI 标注（自动填入年份与主题）'}
                 </span>
               </button>
             )}
@@ -709,17 +706,15 @@ const RecordStory = () => {
         {/* 底部按钮 - 仅在不显示迁徙卡片时显示 */}
         {!migrationsExtracted.length && !extractingMigrations && (
           <div className="bg-white border-t border-[#E5DED3] p-4">
-            <div className="max-w-md mx-auto">
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="w-full py-3 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738] disabled:opacity-50"
-              >
-                {saving ? '保存中...' : '保存故事'}
-              </button>
-            </div>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full py-3 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738] disabled:opacity-50"
+            >
+              {saving ? '保存中...' : '保存故事'}
+            </button>
           </div>
-        )}
+          )}
       </div>
     );
   }
@@ -736,29 +731,25 @@ const RecordStory = () => {
       )}
 
       {/* 顶部导航 */}
-      <div className="bg-white border-b border-[#E5DED3] px-4 py-4">
-        <div className="max-w-md mx-auto flex items-center">
-          <button
-            onClick={() => navigate(-1)}
-            className="text-[#4A3728] hover:opacity-70"
-          >
-            ← 返回
-          </button>
-        </div>
+      <div className="bg-white border-b border-[#E5DED3] px-4 py-4 flex items-center">
+        <button
+          onClick={() => navigate(-1)}
+          className="text-[#4A3728] hover:opacity-70"
+        >
+          ← 返回
+        </button>
       </div>
 
       {/* 标题 */}
-      <div className="bg-white border-b border-[#E5DED3] pb-6">
-        <div className="max-w-md mx-auto text-center">
-          <h1 className="text-xl font-bold text-[#4A3728]">
-            为 {person?.name || '家族成员' } 录入故事
-          </h1>
-        </div>
+      <div className="bg-white border-b border-[#E5DED3] pb-6 text-center">
+        <h1 className="text-xl font-bold text-[#4A3728] px-4">
+          为 {person?.name || '家族成员'} 录入故事
+        </h1>
       </div>
 
       {/* AI 引导问题卡片 */}
       <div className="px-4 mt-4">
-        <div className="max-w-md mx-auto bg-[#FFFDF5] border-l-4 border-[#D4A574] rounded-r-lg p-4 relative">
+        <div className="bg-[#FFFDF5] border-l-4 border-[#D4A574] rounded-r-lg p-4 relative">
           <p className="text-xs text-gray-500 mb-1">今天可以聊聊：</p>
           {questionLoading ? (
             <p className="text-[#4A3728]">AI 正在思考问题...</p>
@@ -797,7 +788,7 @@ const RecordStory = () => {
             className={`w-[140px] h-[140px] rounded-full flex items-center justify-center transition-all ${
               isRecording
                 ? 'bg-red-500 animate-pulse'
-                : 'bg-[#4A3728] hover:bg-[#5A4738]'
+                : 'bg-[#C97B5D] hover:bg-[#C97B5D]'
             }`}
           >
             {isRecording ? (
