@@ -738,23 +738,6 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
             question = f"{person.name}给我们讲讲{chapter.title}的故事吧？"
 
         topic_hint = chapter.title
-
-        # 更新人物章节状态为 in_progress
-        pc = db.query(models.PersonChapter).filter(
-            models.PersonChapter.person_id == person_id,
-            models.PersonChapter.chapter_id == chapter_id,
-        ).first()
-        if pc:
-            pc.status = "in_progress"
-            pc.updated_at = datetime.utcnow()
-        else:
-            pc = models.PersonChapter(
-                person_id=person_id,
-                chapter_id=chapter_id,
-                status="in_progress",
-            )
-            db.add(pc)
-        db.commit()
     else:
         # 原有逻辑：AI生成第一问
         # 获取用户偏好的主题

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { getPersons, getRelationships, getPerson, getPersonChapters, getNextChapter, updateChapterStatus, getStoriesCount, startInterview, getPersonStories, getPersonInterviews, createPerson, updatePerson, deletePerson, deleteRelationship, getPersonMigrations } from '../api'
+import { getPersons, getRelationships, getPerson, getPersonChapters, updateChapterStatus, getStoriesCount, startInterview, getPersonStories, getPersonInterviews, createPerson, updatePerson, deletePerson, deleteRelationship, getPersonMigrations } from '../api'
 import FamilyTimeline from './FamilyTimeline'
 import FamilyMigrationMap from './FamilyMigrationMap'
 import ChapterList from './ChapterList'
@@ -22,7 +22,6 @@ const FamilyTree = () => {
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [currentPersonId, setCurrentPersonId] = useState(null)
   const [currentPerson, setCurrentPerson] = useState(null)
-  const [nextChapter, setNextChapter] = useState(null)
   const [chapters, setChapters] = useState([])
   const [totalStories, setTotalStories] = useState(0)
   const [showChapterList, setShowChapterList] = useState(false)
@@ -33,14 +32,12 @@ const FamilyTree = () => {
     if (!personId) return
     setLoading(true)
     try {
-      const [personRes, nextChapterRes, chaptersRes, storiesCountRes] = await Promise.all([
+      const [personRes, chaptersRes, storiesCountRes] = await Promise.all([
         getPerson(personId),
-        getNextChapter(personId),
         getPersonChapters(personId),
         getStoriesCount(),
       ])
       setCurrentPerson(personRes.data)
-      setNextChapter(nextChapterRes.data)
       setChapters(chaptersRes.data || [])
       setTotalStories(storiesCountRes.data?.count || 0)
     } catch (error) {
@@ -60,15 +57,17 @@ const FamilyTree = () => {
 
   // 开始AI采访
   const handleStartInterview = () => {
-    if (!currentPersonId || !nextChapter) return
-    navigate(`/interview?personId=${currentPersonId}&chapterId=${nextChapter.chapter_id}`)
+    const firstChapter = chapters.find(c => c.order_index === 1)
+    if (!currentPersonId || !firstChapter) return
+    navigate(`/interview?personId=${currentPersonId}&chapterId=${firstChapter.chapter_id}`)
   }
 
   // 跳过当前章节
   const handleSkipChapter = async () => {
-    if (!currentPersonId || !nextChapter) return
+    const firstChapter = chapters.find(c => c.order_index === 1)
+    if (!currentPersonId || !firstChapter) return
     try {
-      await updateChapterStatus(currentPersonId, nextChapter.chapter_id, { status: 'skipped', skip_reason: '用户跳过' })
+      await updateChapterStatus(currentPersonId, firstChapter.chapter_id, { status: 'skipped', skip_reason: '用户跳过' })
       fetchData(currentPersonId)
     } catch (err) {
       console.error('跳过失败:', err)
@@ -181,63 +180,55 @@ const FamilyTree = () => {
                 <p className="text-gray-400">{formatDate()}</p>
               </div>
 
-              {/* 当前章节卡片 */}
-              {nextChapter ? (
-                <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
-                  {/* 章节序号和标题 */}
-                  <div className="flex items-center gap-4 mb-4">
-                    <span className="text-5xl font-serif text-[#D4A574]">{nextChapter.order_index}</span>
-                    <div>
-                      <h3 className="text-2xl font-serif text-[#5C3D2E]">{nextChapter.title}</h3>
-                      <p className="text-gray-400 text-sm mt-1">第{nextChapter.order_index}章 · 共11章</p>
+              {/* 第一章卡片 */}
+              {(() => {
+                const firstChapter = chapters.find(c => c.order_index === 1)
+                return firstChapter ? (
+                  <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+                    {/* 章节序号和标题 */}
+                    <div className="flex items-center gap-4 mb-4">
+                      <span className="text-5xl font-serif text-[#D4A574]">{firstChapter.order_index}</span>
+                      <div>
+                        <h3 className="text-2xl font-serif text-[#5C3D2E]">{firstChapter.title}</h3>
+                        <p className="text-gray-400 text-sm mt-1">第{firstChapter.order_index}章 · 共11章</p>
+                      </div>
+                    </div>
+
+                    {/* 引导语 */}
+                    <p className="text-gray-500 mb-6">{firstChapter.description || '请分享您的故事'}</p>
+
+                    {/* 进度条 */}
+                    <div className="h-1 bg-gray-100 rounded-full mb-8">
+                      <div
+                        className="h-full bg-[#D4A574] rounded-full transition-all"
+                        style={{ width: `${progress * 100}%` }}
+                      />
+                    </div>
+
+                    {/* 操作按钮 */}
+                    <div className="space-y-3">
+                      <button
+                        onClick={handleStartInterview}
+                        className="w-full h-14 text-lg bg-[#5C3D2E] text-white rounded-xl hover:bg-[#4A3125] transition-colors"
+                      >
+                        开始AI采访
+                      </button>
+                      <button
+                        onClick={handleFreeRecord}
+                        className="w-full h-12 text-lg border-2 border-[#5C3D2E] text-[#5C3D2E] rounded-xl hover:bg-[#F5F1E9] transition-colors"
+                      >
+                        自由记录
+                      </button>
+                      <button
+                        onClick={handleSkipChapter}
+                        className="w-full h-10 text-sm text-gray-400 hover:text-gray-600"
+                      >
+                        今天先跳过
+                      </button>
                     </div>
                   </div>
-
-                  {/* 引导语 */}
-                  <p className="text-gray-500 mb-6">{nextChapter.description || '请分享您的故事'}</p>
-
-                  {/* 进度条 */}
-                  <div className="h-1 bg-gray-100 rounded-full mb-8">
-                    <div
-                      className="h-full bg-[#D4A574] rounded-full transition-all"
-                      style={{ width: `${progress * 100}%` }}
-                    />
-                  </div>
-
-                  {/* 操作按钮 */}
-                  <div className="space-y-3">
-                    <button
-                      onClick={handleStartInterview}
-                      className="w-full h-14 text-lg bg-[#5C3D2E] text-white rounded-xl hover:bg-[#4A3125] transition-colors"
-                    >
-                      开始AI采访
-                    </button>
-                    <button
-                      onClick={handleFreeRecord}
-                      className="w-full h-12 text-lg border-2 border-[#5C3D2E] text-[#5C3D2E] rounded-xl hover:bg-[#F5F1E9] transition-colors"
-                    >
-                      自由记录
-                    </button>
-                    <button
-                      onClick={handleSkipChapter}
-                      className="w-full h-10 text-sm text-gray-400 hover:text-gray-600"
-                    >
-                      今天先跳过
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* 全部完成 */
-                <div className="bg-white rounded-2xl p-8 shadow-sm text-center">
-                  <p className="text-xl text-[#5C3D2E] mb-6">你的故事，我们都记下来了</p>
-                  <button
-                    onClick={() => setActiveTab('stories')}
-                    className="px-6 py-3 bg-[#5C3D2E] text-white rounded-xl hover:bg-[#4A3125]"
-                  >
-                    翻看我的自传
-                  </button>
-                </div>
-              )}
+                ) : null
+              })()}
 
               {/* 底部章节进度 */}
               <div className="mt-8">
@@ -260,9 +251,8 @@ const FamilyTree = () => {
                       const chapter = chapters.find(c => c.order_index === i + 1)
                       const isCompleted = chapter?.status === 'completed'
                       return (
-                        <button
+                        <div
                           key={i}
-                          onClick={() => chapter && setNextChapter(chapter)}
                           className={`flex-1 h-2 rounded-full transition-colors ${
                             isCompleted ? 'bg-[#D4A574]' : 'bg-gray-200'
                           }`}
