@@ -2222,7 +2222,7 @@ def update_chapter_status(
     status = request.get("status")
     skip_reason = request.get("skip_reason")
 
-    if status not in ["not_started", "in_progress", "completed", "skipped"]:
+    if status not in ["not_started", "in_progress", "completed"]:
         raise HTTPException(status_code=400, detail="无效状态")
 
     # 查找或创建人物章节记录

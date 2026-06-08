@@ -10,8 +10,6 @@ const ChapterList = ({ personId }) => {
   const [chapterStories, setChapterStories] = useState({})
   const [showModal, setShowModal] = useState(false)
   const [selectedChapter, setSelectedChapter] = useState(null)
-  const [skipReason, setSkipReason] = useState('')
-  const [showSkipInput, setShowSkipInput] = useState(false)
 
   useEffect(() => {
     if (personId) {
@@ -43,8 +41,6 @@ const ChapterList = ({ personId }) => {
   const handleStart = (chapter) => {
     setSelectedChapter(chapter)
     setShowModal(true)
-    setShowSkipInput(false)
-    setSkipReason('')
   }
 
   const handleContinue = (chapter) => {
@@ -75,20 +71,6 @@ const ChapterList = ({ personId }) => {
     if (!selectedChapter) return
     setShowModal(false)
     navigate(`/record?personId=${personId}&chapterId=${selectedChapter.chapter_id}`)
-  }
-
-  const handleSkip = async () => {
-    if (!selectedChapter || !skipReason.trim()) return
-    setShowModal(false)
-    try {
-      await updateChapterStatus(personId, selectedChapter.chapter_id, {
-        status: 'skipped',
-        skip_reason: skipReason.trim()
-      })
-      fetchChapters()
-    } catch (err) {
-      console.error('跳过失败:', err)
-    }
   }
 
   const completedCount = chapters.filter(c => c.status === 'completed').length
@@ -140,16 +122,11 @@ const ChapterList = ({ personId }) => {
                   {chapter.status === 'completed' && (
                     <span className="text-xs text-green-600">已完成 · {chapter.stories_count || 0}个故事</span>
                   )}
-                  {chapter.status === 'skipped' && (
-                    <span className="text-xs text-gray-400">
-                      已跳过 {chapter.skip_reason && `· ${chapter.skip_reason}`}
-                    </span>
-                  )}
                 </div>
               </div>
 
               {/* 操作按钮 */}
-              {(chapter.status === 'not_started' || chapter.status === 'skipped') && (
+              {chapter.status === 'not_started' && (
                 <button
                   onClick={() => handleStart(chapter)}
                   className="px-4 py-2 text-sm border border-[#5C3D2E] text-[#5C3D2E] rounded-lg hover:bg-[#F5F1E9]"
@@ -218,51 +195,20 @@ const ChapterList = ({ personId }) => {
               {selectedChapter.title}
             </h3>
 
-            {!showSkipInput ? (
-              <div className="space-y-3">
-                <button
-                  onClick={handleAIInterview}
-                  className="w-full h-14 text-lg bg-[#5C3D2E] text-white rounded-xl hover:bg-[#4A3125]"
-                >
-                  AI采访
-                </button>
-                <button
-                  onClick={handleFreeRecord}
-                  className="w-full h-12 text-lg border-2 border-[#5C3D2E] text-[#5C3D2E] rounded-xl hover:bg-[#F5F1E9]"
-                >
-                  自由录音
-                </button>
-                <button
-                  onClick={() => setShowSkipInput(true)}
-                  className="w-full h-10 text-sm text-gray-400 hover:text-gray-600"
-                >
-                  暂时跳过
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-sm text-gray-500">请输入跳过原因（选填）：</p>
-                <input
-                  type="text"
-                  value={skipReason}
-                  onChange={(e) => setSkipReason(e.target.value)}
-                  className="w-full h-12 px-3 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#5C3D2E]"
-                  placeholder="比如：以后再说"
-                />
-                <button
-                  onClick={handleSkip}
-                  className="w-full h-12 text-lg border border-[#5C3D2E] text-[#5C3D2E] rounded-xl hover:bg-[#F5F1E9]"
-                >
-                  确认跳过
-                </button>
-                <button
-                  onClick={() => setShowSkipInput(false)}
-                  className="w-full h-10 text-sm text-gray-400 hover:text-gray-600"
-                >
-                  返回
-                </button>
-              </div>
-            )}
+            <div className="space-y-3">
+              <button
+                onClick={handleAIInterview}
+                className="w-full h-14 text-lg bg-[#5C3D2E] text-white rounded-xl hover:bg-[#4A3125]"
+              >
+                AI采访
+              </button>
+              <button
+                onClick={handleFreeRecord}
+                className="w-full h-12 text-lg border-2 border-[#5C3D2E] text-[#5C3D2E] rounded-xl hover:bg-[#F5F1E9]"
+              >
+                自由录音
+              </button>
+            </div>
 
             <button
               onClick={() => setShowModal(false)}

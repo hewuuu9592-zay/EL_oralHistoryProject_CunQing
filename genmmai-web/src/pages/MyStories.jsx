@@ -114,9 +114,6 @@ const MyStories = ({ personId }) => {
                     {chapter.status === 'in_progress' && (
                       <span className="text-xs text-orange-500">进行中</span>
                     )}
-                    {chapter.status === 'skipped' && (
-                      <span className="text-xs text-gray-400">已跳过</span>
-                    )}
                   </div>
                 </div>
 

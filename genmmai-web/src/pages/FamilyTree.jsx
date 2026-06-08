@@ -61,18 +61,6 @@ const FamilyTree = () => {
     navigate(`/interview?personId=${currentPersonId}&chapterId=${firstChapter.chapter_id}`)
   }
 
-  // 跳过当前章节
-  const handleSkipChapter = async () => {
-    const firstChapter = chapters.find(c => c.order_index === 1)
-    if (!currentPersonId || !firstChapter) return
-    try {
-      await updateChapterStatus(currentPersonId, firstChapter.chapter_id, { status: 'skipped', skip_reason: '用户跳过' })
-      fetchData(currentPersonId)
-    } catch (err) {
-      console.error('跳过失败:', err)
-    }
-  }
-
   // 自由记录
   const handleFreeRecord = () => {
     navigate(`/record?personId=${currentPersonId}`)
@@ -218,13 +206,7 @@ const FamilyTree = () => {
                       >
                         自由记录
                       </button>
-                      <button
-                        onClick={handleSkipChapter}
-                        className="w-full h-10 text-sm text-gray-400 hover:text-gray-600"
-                      >
-                        今天先跳过
-                      </button>
-                    </div>
+                                          </div>
                   </div>
                 ) : null
               })()}
@@ -238,7 +220,8 @@ const FamilyTree = () => {
                     return (
                       <div
                         key={i}
-                        className={`flex-1 h-2 rounded-full transition-colors ${
+                        onClick={() => setSidebarTab('stories')}
+                        className={`flex-1 h-2 rounded-full transition-colors cursor-pointer hover:opacity-70 ${
                           isCompleted ? 'bg-[#D4A574]' : 'bg-gray-200'
                         }`}
                       />

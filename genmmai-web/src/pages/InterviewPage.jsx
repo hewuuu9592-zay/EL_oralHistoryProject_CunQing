@@ -654,18 +654,6 @@ const InterviewPage = () => {
           </div>
         </div>
 
-        {/* 跳过按钮 */}
-        {!currentRound && !transcribing && !isRecording && (
-          <div className="text-center pb-3">
-            <button
-              onClick={() => handleNextQuestion(true)}
-              className="text-xs text-gray-400"
-            >
-              跳过这个问题 →
-            </button>
-          </div>
-        )}
-
         {/* 退出确认弹窗 */}
         {showExitModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
