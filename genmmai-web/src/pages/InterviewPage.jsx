@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getPerson, startInterview, submitInterviewAnswer, getInterviewRoundStatus, getNextQuestion, completeInterview, abandonInterview, getPersonInterviews, getThemes, getStoryGenerationStatus, getStory } from '../api';
-import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
+import { getPerson, startInterview, submitInterviewAnswer, getInterviewRoundStatus, getNextQuestion, completeInterview, abandonInterview, getPersonInterviews, getStoryGenerationStatus, getStory } from '../api';
 
 // 录音辅助函数
 
@@ -12,10 +11,7 @@ const InterviewPage = () => {
   const chapterId = searchParams.get('chapterId');
 
   const [stage, setStage] = useState('loading'); // loading | ready | interviewing | completing | done
-  const [selectedThemes, setSelectedThemes] = useState([]);  // 选中的主题
 
-  // 使用 ThemeContext
-  const { themes, getThemeStyle } = useTheme();
   const [person, setPerson] = useState(null);
   const [session, setSession] = useState(null);
   const [currentRound, setCurrentRound] = useState(null);
@@ -80,7 +76,7 @@ const InterviewPage = () => {
     try {
       // 先进入采访界面，显示"问题生成中..."
       setStage('interviewing');
-      setSession({ id: null, topic_hint: selectedThemes.join(',') });
+      setSession({ id: null, topic_hint: null });
       setRounds([{
         round_index: 1,
         question: null, // 等待生成
@@ -89,7 +85,7 @@ const InterviewPage = () => {
       }]);
 
       // 然后异步创建采访并生成问题
-      const reqData = chapterId ? { chapter_id: chapterId } : (selectedThemes.length > 0 ? { preferred_themes: selectedThemes } : {});
+      const reqData = chapterId ? { chapter_id: chapterId } : {};
       console.log('chapterId:', chapterId, 'reqData:', reqData)
       const res = await startInterview(personId, reqData);
       const sessionData = res.data;
@@ -108,15 +104,6 @@ const InterviewPage = () => {
       alert('开始失败，请重试');
       setStage('ready');
     }
-  };
-
-  // 切换主题选择
-  const toggleTheme = (themeName) => {
-    setSelectedThemes(prev =>
-      prev.includes(themeName)
-        ? prev.filter(t => t !== themeName)
-        : [...prev, themeName]
-    );
   };
 
   // 开始录音
@@ -448,45 +435,6 @@ const InterviewPage = () => {
           </div>
           <h1 className="text-xl font-bold text-[#4A3728] mb-1">{person?.name}</h1>
           <p className="text-[#8B7355] text-sm mb-6">今天我们来聊聊TA的故事</p>
-
-          主题选择
-          <div className="w-full max-w-sm mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-base font-medium text-[#4A3728]">今天想聊什么？</h2>
-              <button
-                onClick={() => setSelectedThemes([])}
-                className="text-xs text-gray-400"
-              >
-                全部都可以
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {(themes || []).map((theme) => {
-                const style = getThemeStyle(themes, theme.name);
-                const isSelected = selectedThemes.includes(theme.name);
-                return (
-                  <button
-                    key={theme.name}
-                    onClick={() => toggleTheme(theme.name)}
-                    className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
-                      isSelected
-                        ? 'ring-2 ring-[#C9A84C]'
-                        : ''
-                    }`}
-                    style={{
-                      backgroundColor: isSelected ? '#C9A84C' : style.bg,
-                      color: isSelected ? 'white' : style.text
-                    }}
-                  >
-                    {style.emoji} {theme.name}
-                  </button>
-                );
-              })}
-            </div>
-            {selectedThemes.length === 0 && (
-              <p className="text-xs text-gray-400 mt-2">不限定主题，让AI自由发挥</p>
-            )}
-          </div>
 
           {/* 开始按钮 */}
           <button

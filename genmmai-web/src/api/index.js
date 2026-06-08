@@ -68,15 +68,6 @@ export const getFamilyTimeline = (params = {}) => api.get('/family/timeline', { 
 export const getFamilyMigrations = () => api.get('/family/migrations');
 export const getFamilyMigrationPersons = () => api.get('/family/migrations/persons');
 
-// 主题 API
-export const getThemes = () => api.get('/themes');
-export const createTheme = (data) => api.post('/themes', data);
-export const deleteTheme = (id) => api.delete(`/themes/${id}`);
-export const updateTheme = (id, data) => api.patch(`/themes/${id}`, data);
-
-// 主题管理 - 获取带故事数量的主题列表
-export const getThemesWithCount = () => api.get('/themes/with-count');
-
 // 历史事件 API
 export const getHistoricalEvents = (yearFrom, yearTo) => {
   const params = new URLSearchParams();

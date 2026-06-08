@@ -7,7 +7,6 @@ import RecordStory from './pages/RecordStory'
 import InterviewPage from './pages/InterviewPage'
 import Settings from './pages/Settings'
 import Welcome from './pages/Welcome'
-import { ThemeProvider } from './contexts/ThemeContext'
 import { getPerson } from './api'
 import './App.css'
 
@@ -34,19 +33,17 @@ function App() {
   }, [navigate])
 
   return (
-    <ThemeProvider>
-      <div className="min-h-screen bg-[#F5F1E9]">
-        <Routes>
-          <Route path="/" element={<FamilyTree />} />
-          <Route path="/person/:id" element={<PersonCard />} />
-          <Route path="/story/:id" element={<StoryDetail />} />
-          <Route path="/record" element={<RecordStory />} />
-          <Route path="/interview" element={<InterviewPage />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/welcome" element={<Welcome />} />
-        </Routes>
-      </div>
-    </ThemeProvider>
+    <div className="min-h-screen bg-[#F5F1E9]">
+      <Routes>
+        <Route path="/" element={<FamilyTree />} />
+        <Route path="/person/:id" element={<PersonCard />} />
+        <Route path="/story/:id" element={<StoryDetail />} />
+        <Route path="/record" element={<RecordStory />} />
+        <Route path="/interview" element={<InterviewPage />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/welcome" element={<Welcome />} />
+      </Routes>
+    </div>
   )
 }
 

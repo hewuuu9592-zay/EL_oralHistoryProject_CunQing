@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { getPerson, getPersons, getSuggestQuestion, uploadAndProcessAudio, updateStory, getStory, createStoryPerson, tagStory, extractStoryMigrations, confirmStoryMigrations, getHistoricalEvents, createCustomEvent, patchStory } from '../api';
-import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
 
 const DEFAULT_QUESTION = "您有什么想留给后代的故事吗？";
 
 const RecordStory = () => {
-  const { themes, getThemeStyle, loading: themeLoading } = useTheme();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const personId = searchParams.get('personId') || localStorage.getItem('current_person_id');
@@ -31,7 +29,6 @@ const RecordStory = () => {
   // 确认表单状态
   const [transcript, setTranscript] = useState('');
   const [year, setYear] = useState('');
-  const [selectedThemes, setSelectedThemes] = useState([]);
   const [selectedPersons, setSelectedPersons] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -257,14 +254,6 @@ const RecordStory = () => {
     return () => clearInterval(pollInterval);
   }, [stage, storyId, transcriptionStatus]);
 
-  const toggleTheme = (themeName) => {
-    setSelectedThemes(prev =>
-      prev.includes(themeName)
-        ? prev.filter(t => t !== themeName)
-        : [...prev, themeName]
-    );
-  };
-
   const togglePerson = (pId) => {
     if (pId === personId) return; // 当前人物不可取消
     setSelectedPersons(prev =>
@@ -301,7 +290,6 @@ const RecordStory = () => {
         transcript: transcript,
         summary: transcript?.slice(0, 50) || '',
         year: year ? parseInt(year) : null,
-        theme: selectedThemes[0] || null,
         person_ids: JSON.stringify(selectedPersons),
         related_history_id: selectedHistoryEvent?.id || null,
         related_history: selectedHistoryEvent?.title || null,
@@ -538,30 +526,6 @@ const RecordStory = () => {
                 placeholder="故事发生在哪一年？（如1965）"
                 className="w-full p-3 mt-1 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574]"
               />
-            </div>
-
-            {/* 主题标签 */}
-            <div>
-              <label className="text-xs text-gray-500">主题标签（多选）</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {(themes || []).map(theme => {
-                  const style = getThemeStyle(themes, theme.name);
-                  return (
-                    <button
-                      key={theme.name}
-                      onClick={() => toggleTheme(theme.name)}
-                      className={`px-3 py-1.5 rounded-full text-sm ${
-                        selectedThemes.includes(theme.name)
-                          ? 'bg-[#4A3728] text-white'
-                          : 'bg-white border border-[#E5DED3] text-[#4A3728]'
-                      }`}
-                      style={selectedThemes.includes(theme.name) ? {} : { backgroundColor: style.bg, color: style.text }}
-                    >
-                      {style.emoji} {theme.name}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
 
             {/* 关联历史事件 */}

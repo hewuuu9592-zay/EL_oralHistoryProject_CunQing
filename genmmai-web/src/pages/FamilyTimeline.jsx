@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getPersonStories, getPersons, getThemes, getHistoricalEvents, createEventMemory, getEventStories, createCustomEvent, updateCustomEvent, deleteCustomEvent } from '../api';
-import { useTheme, getThemeStyle } from '../contexts/ThemeContext';
+import { getPersonStories, getPersons, getHistoricalEvents, createEventMemory, getEventStories, createCustomEvent, updateCustomEvent, deleteCustomEvent } from '../api';
 
 const CATEGORY_ICONS = {
   '政治': '🏛️',
@@ -19,59 +18,10 @@ const CATEGORY_ICONS = {
 
 // 筛选栏组件
 const FilterBar = ({
-  selectedThemes,
-  setSelectedThemes,
-  themes,
-  getThemeStyle,
   onAddCustomEvent,
 }) => {
-  const toggleTheme = (theme) => {
-    if (selectedThemes.includes(theme)) {
-      setSelectedThemes(selectedThemes.filter(t => t !== theme));
-    } else {
-      setSelectedThemes([...selectedThemes, theme]);
-    }
-  };
-
-  if (!themes || themes.length === 0) return null;
-
   return (
     <div className="p-4 bg-white border-b border-[#E5DED3] space-y-3">
-      {/* 主题多选 */}
-      <div>
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-sm text-[#8B7355]">主题：</span>
-          <button
-            onClick={() =>
-              selectedThemes.length === themes.length
-                ? setSelectedThemes([])
-                : setSelectedThemes(themes.map((t) => t.name))
-            }
-            className="text-xs text-[#C9A84C] underline"
-          >
-            {selectedThemes.length === themes.length ? '取消全选' : '全选'}
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {themes.map((theme) => {
-            const style = getThemeStyle(themes, theme.name);
-            const isSelected = selectedThemes.includes(theme.name);
-            return (
-              <button
-                key={theme.name}
-                onClick={() => toggleTheme(theme.name)}
-                className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                  isSelected ? 'ring-2 ring-[#C9A84C]' : ''
-                }`}
-                style={{ backgroundColor: style.bg, color: style.text }}
-              >
-                {style.emoji} {theme.name}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* 年代范围 */}
       <div className="flex items-center gap-4">
         <span className="text-sm text-[#8B7355]">年代：</span>
@@ -449,7 +399,6 @@ const FamilyTimeline = ({ personId, searchParams: externalSearchParams }) => {
   // 筛选状态
   const [yearRange, setYearRange] = useState([null, null]);
   const [selectedPersons, setSelectedPersons] = useState([]);
-  const [selectedThemes, setSelectedThemes] = useState([]);
 
   // 自定义事件状态
   const [showCustomEventModal, setShowCustomEventModal] = useState(false);
@@ -473,15 +422,12 @@ const FamilyTimeline = ({ personId, searchParams: externalSearchParams }) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [storiesRes, themesRes] = await Promise.all([
+        const [storiesRes] = await Promise.all([
           getPersonStories(currentPersonId),
-          getThemes(),
         ]);
         const personStories = storiesRes.data || [];
         setStories(personStories);
         setPersons(personsRes.data || []);
-        setThemes(themesRes.data || []);
-        setSelectedThemes(themesRes.data?.map(t => t.name) || []);
 
         // 确定年份范围
         const storyYears = personStories
@@ -524,9 +470,6 @@ const FamilyTimeline = ({ personId, searchParams: externalSearchParams }) => {
     if (yearRange[1]) {
       filtered = filtered.filter(s => !s.year || s.year <= yearRange[1]);
     }
-    if (selectedThemes.length > 0) {
-      filtered = filtered.filter(s => s.theme && selectedThemes.includes(s.theme));
-    }
     if (selectedPersons.length > 0) {
       filtered = filtered.filter(s =>
         s.persons?.some(p => selectedPersons.includes(p.id))
@@ -534,7 +477,7 @@ const FamilyTimeline = ({ personId, searchParams: externalSearchParams }) => {
     }
 
     return filtered;
-  }, [stories, yearRange, selectedThemes, selectedPersons]);
+  }, [stories, yearRange, selectedPersons]);
 
   // 合并时间轴数据
   const timelineData = useMemo(() => {
@@ -661,10 +604,6 @@ const FamilyTimeline = ({ personId, searchParams: externalSearchParams }) => {
 
       {/* 筛选栏 */}
       <FilterBar
-        selectedThemes={selectedThemes}
-        setSelectedThemes={setSelectedThemes}
-        themes={themes}
-        getThemeStyle={getThemeStyle}
         onAddCustomEvent={() => { setEditingEvent(null); setShowCustomEventModal(true); }}
       />
 

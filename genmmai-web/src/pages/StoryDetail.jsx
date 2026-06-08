@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getStory, patchStory, getPersons, getStoryGenerationStatus, deleteStory } from '../api';
-import { useTheme } from '../contexts/ThemeContext';
 
 const StoryDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { themes, getThemeStyle } = useTheme();
 
   const [story, setStory] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -25,7 +23,6 @@ const StoryDetail = () => {
   // 编辑表单状态
   const [editTranscript, setEditTranscript] = useState('');
   const [editYear, setEditYear] = useState(null);
-  const [editTheme, setEditTheme] = useState('');
   const [editPersonIds, setEditPersonIds] = useState([]);
   const [allPersons, setAllPersons] = useState([]);
   const [personsLoading, setPersonsLoading] = useState(false);
@@ -84,7 +81,6 @@ const StoryDetail = () => {
     // 初始化表单数据
     setEditTranscript(story.transcript || '');
     setEditYear(story.year || null);
-    setEditTheme(story.theme || '');
     setEditPersonIds(story.persons?.map(p => p.id) || []);
 
     // 获取家族成员列表
@@ -134,9 +130,6 @@ const StoryDetail = () => {
       }
       if (editYear !== story.year) {
         updateData.year = editYear;
-      }
-      if (editTheme !== story.theme) {
-        updateData.theme = editTheme;
       }
       if (editPersonIds.length > 0) {
         updateData.person_ids = editPersonIds;
@@ -220,11 +213,6 @@ const StoryDetail = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const getThemeInfo = (themeName) => {
-    const theme = themes?.find(t => t.name === themeName);
-    return theme || { name: themeName, emoji: '📝', color_bg: '#F3F4F6', color_text: '#374151' };
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-[#FAF7F2] flex items-center justify-center">
@@ -241,7 +229,7 @@ const StoryDetail = () => {
     );
   }
 
-  const themeInfo = getThemeInfo(story.theme);
+  // const themeInfo = getThemeInfo(story.theme);
 
   return (
     <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
@@ -273,13 +261,9 @@ const StoryDetail = () => {
             </span>
           )}
 
-          {(story.theme || story.decade) && (
-            <span
-              className="px-3 py-1 rounded-full text-sm shadow-sm"
-              style={{ backgroundColor: themeInfo.color_bg, color: themeInfo.color_text }}
-            >
-              {story.decade && <span className="text-gray-400">{story.decade} </span>}
-              <span>{themeInfo.emoji} {story.theme}</span>
+          {story.decade && (
+            <span className="px-3 py-1 rounded-full text-sm shadow-sm bg-gray-100 text-gray-600">
+              {story.decade}
             </span>
           )}
 
@@ -650,41 +634,6 @@ const StoryDetail = () => {
                   className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
                   placeholder="故事发生在哪一年"
                 />
-              </div>
-
-              {/* 所属类目 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-2">所属类目</label>
-                {personsLoading ? (
-                  <div className="text-gray-400 text-sm">加载中...</div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {themes?.map((theme) => {
-                      const isSelected = editTheme === theme.name;
-                      return (
-                        <button
-                          key={theme.id}
-                          onClick={() => setEditTheme(theme.name)}
-                          className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
-                            isSelected
-                              ? 'text-white'
-                              : 'text-gray-600 hover:bg-gray-100'
-                          }`}
-                          style={{
-                            backgroundColor: isSelected
-                              ? '#4A3728'
-                              : theme.color_bg || '#F3F4F6',
-                            color: isSelected
-                              ? '#fff'
-                              : theme.color_text || '#374151',
-                          }}
-                        >
-                          {theme.emoji} {theme.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
 
               {/* 关联人物 */}

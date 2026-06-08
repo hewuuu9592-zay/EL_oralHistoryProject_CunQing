@@ -7,17 +7,6 @@ import uuid
 def generate_uuid():
     return str(uuid.uuid4())
 
-class Theme(Base):
-    __tablename__ = "themes"
-    id = Column(String, primary_key=True, default=generate_uuid)
-    name = Column(String, nullable=False, unique=True)
-    emoji = Column(String, nullable=True)
-    color_bg = Column(String, nullable=True)
-    color_text = Column(String, nullable=True)
-    is_default = Column(Boolean, default=False)
-    sort_order = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-
 class Person(Base):
     __tablename__ = "persons"
     id = Column(String, primary_key=True, default=generate_uuid)
