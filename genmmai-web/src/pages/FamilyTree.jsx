@@ -3,9 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getPersons, getRelationships, getPerson, getPersonChapters, updateChapterStatus, getStoriesCount, startInterview, getPersonStories, getPersonInterviews, createPerson, updatePerson, deletePerson, deleteRelationship, getPersonMigrations } from '../api'
 import FamilyTimeline from './FamilyTimeline'
 import FamilyMigrationMap from './FamilyMigrationMap'
-import ChapterList from './ChapterList'
 import FamilyMembers from './FamilyMembers'
 import MyFootprint from './MyFootprint'
+import MyStories from './MyStories'
 
 // 日期格式化
 const formatDate = () => {
@@ -24,7 +24,6 @@ const FamilyTree = () => {
   const [currentPerson, setCurrentPerson] = useState(null)
   const [chapters, setChapters] = useState([])
   const [totalStories, setTotalStories] = useState(0)
-  const [showChapterList, setShowChapterList] = useState(false)
   const [showMyInfo, setShowMyInfo] = useState(false)
 
   // 加载数据
@@ -230,44 +229,29 @@ const FamilyTree = () => {
                 ) : null
               })()}
 
-              {/* 底部章节进度 */}
+              {/* 底部进度条 */}
               <div className="mt-8">
-                <button
-                  onClick={() => setShowChapterList(!showChapterList)}
-                  className="w-full py-3 text-center text-[#5C3D2E] border border-[#E5DED3] rounded-xl hover:bg-[#F5F1E9]"
-                >
-                  {showChapterList ? '收起章节列表' : '查看全部章节'}
-                </button>
-
-                {showChapterList && (
-                  <div className="mt-4">
-                    <ChapterList personId={currentPersonId} />
-                  </div>
-                )}
-
-                {!showChapterList && (
-                  <div className="flex gap-2 mt-4">
-                    {Array.from({ length: 11 }, (_, i) => {
-                      const chapter = chapters.find(c => c.order_index === i + 1)
-                      const isCompleted = chapter?.status === 'completed'
-                      return (
-                        <div
-                          key={i}
-                          className={`flex-1 h-2 rounded-full transition-colors ${
-                            isCompleted ? 'bg-[#D4A574]' : 'bg-gray-200'
-                          }`}
-                        />
-                      )
+                <div className="flex gap-2">
+                  {Array.from({ length: 11 }, (_, i) => {
+                    const chapter = chapters.find(c => c.order_index === i + 1)
+                    const isCompleted = chapter?.status === 'completed'
+                    return (
+                      <div
+                        key={i}
+                        className={`flex-1 h-2 rounded-full transition-colors ${
+                          isCompleted ? 'bg-[#D4A574]' : 'bg-gray-200'
+                        }`}
+                      />
+                    )
                     })}
                 </div>
-                )}
               </div>
             </div>
           )}
 
           {/* 我的故事 */}
           {activeTab === 'stories' && currentPersonId && (
-            <FamilyTimeline personId={currentPersonId} />
+            <MyStories personId={currentPersonId} />
           )}
 
           {/* 家族脉络 */}
