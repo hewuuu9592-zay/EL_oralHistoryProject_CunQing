@@ -484,7 +484,7 @@ const FamilyTimeline = ({ personId, searchParams: externalSearchParams }) => {
         setSelectedThemes(themesRes.data?.map(t => t.name) || []);
 
         // 确定年份范围
-        const storyYears = familyStories
+        const storyYears = personStories
           .map(s => s.year)
           .filter(y => y && y > 1800 && y < 2030);
 

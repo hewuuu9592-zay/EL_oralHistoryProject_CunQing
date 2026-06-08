@@ -1172,6 +1172,7 @@ def complete_interview(
 
     # 如果有 chapter_id，关联章节并更新状态
     if chapter_id:
+        print(f"[DEBUG] chapter_stories: chapter_id={chapter_id}, story_id={story.id}, person_id={session.person_id}")
         cs = models.ChapterStory(
             person_id=session.person_id,
             chapter_id=chapter_id,
@@ -2190,8 +2191,12 @@ def get_person_chapters(person_id: str, db: Session = Depends(get_db)):
         status = pc.status if pc else "not_started"
         skip_reason = pc.skip_reason if pc else None
 
-        # 统计该章节关联的故事数量（通过 story_persons 关联）
-        stories_count = 0
+        # 统计该章节关联的故事数量（通过 chapter_stories 关联）
+        chapter_stories = db.query(models.ChapterStory).filter(
+            models.ChapterStory.person_id == person_id,
+            models.ChapterStory.chapter_id == c.id,
+        ).all()
+        stories_count = len(chapter_stories)
 
         result.append({
             "chapter_id": c.id,
