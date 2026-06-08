@@ -75,9 +75,9 @@ const FamilyTree = () => {
     { key: 'map', label: '我的足迹' },
   ]
 
-  // 计算进度
-  const completedCount = chapters.filter(c => c.status === 'completed').length
-  const progress = completedCount / 11
+  // // 计算进度
+  // const completedCount = chapters.filter(c => c.status === 'completed').length
+  // const progress = completedCount / 11
 
   if (loading) {
     return (
@@ -185,13 +185,13 @@ const FamilyTree = () => {
                     {/* 引导语 */}
                     <p className="text-gray-500 mb-6">{firstChapter.description || '请分享您的故事'}</p>
 
-                    {/* 进度条 */}
+                    {/* 进度条
                     <div className="h-1 bg-gray-100 rounded-full mb-8">
                       <div
                         className="h-full bg-[#D4A574] rounded-full transition-all"
                         style={{ width: `${progress * 100}%` }}
                       />
-                    </div>
+                    </div> */}
 
                     {/* 操作按钮 */}
                     <div className="space-y-3">
