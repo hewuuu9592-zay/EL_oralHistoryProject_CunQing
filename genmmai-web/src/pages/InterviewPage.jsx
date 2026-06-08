@@ -319,7 +319,7 @@ const InterviewPage = () => {
     if (!session) return;
     try {
       await abandonInterview(session.id);
-      navigate(`/person/${personId}`);
+      navigate('/');
     } catch (e) {
       console.error('放弃失败:', e);
     }
