@@ -3443,6 +3443,96 @@ def get_event_stories(event_id: str, db: Session = Depends(get_db)):
     return result
 
 
+# ============= 数据迁移函数 =============
+def migrate_migration_records():
+    """迁移 migration_records 表：将同一地点的多条记录合并为一条"""
+    db = SessionLocal()
+    try:
+        # 查询所有 migration_records
+        records = db.query(models.MigrationRecord).all()
+        if not records:
+            print("迁移完成，共合并0条记录")
+            return
+
+        # 按 (person_id, place_name) 分组
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for r in records:
+            key = (r.person_id, r.place_name)
+            groups[key].append(r)
+
+        merged_count = 0
+        to_delete = []
+
+        for (person_id, place_name), group in groups.items():
+            if len(group) <= 1:
+                # 只有一条记录，直接更新 events 字段
+                r = group[0]
+                if r.events is None:
+                    # 构建 events 数组
+                    events = []
+                    if r.year or r.description:
+                        events.append({
+                            "year": r.year,
+                            "description": r.description,
+                            "source_story_id": r.source_story_id
+                        })
+                    r.events = json.dumps(events, ensure_ascii=False) if events else None
+                    merged_count += 1
+                continue
+
+            # 多条记录，合并为一条
+            # 按 year 排序，最早的作为主记录
+            sorted_group = sorted(group, key=lambda x: (x.year or 9999, x.id))
+            main_record = sorted_group[0]
+            to_delete.extend(sorted_group[1:])
+
+            # 合并 events
+            events = []
+            if main_record.year or main_record.description:
+                events.append({
+                    "year": main_record.year,
+                    "description": main_record.description,
+                    "source_story_id": main_record.source_story_id
+                })
+            # 追加其他记录
+            for r in sorted_group[1:]:
+                if r.year or r.description:
+                    events.append({
+                        "year": r.year,
+                        "description": r.description,
+                        "source_story_id": r.source_story_id
+                    })
+
+            # 更新主记录
+            main_record.events = json.dumps(events, ensure_ascii=False)
+            # 更新主要事件（第一条）
+            if events:
+                main_record.year = events[0].get("year")
+                main_record.description = events[0].get("description")
+            merged_count += 1
+
+        # 删除多余记录
+        for r in to_delete:
+            db.delete(r)
+
+        db.commit()
+        print(f"迁移完成，共合并{merged_count}条记录")
+    except Exception as e:
+        print(f"迁移失败: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 if __name__ == "__main__":
+    # 先执行表结构检测
+    from database import Base
+    Base.metadata.create_all(bind=engine)
+    print("数据库表结构检测完成")
+
+    # 执行数据迁移
+    migrate_migration_records()
+
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -37,6 +37,7 @@ class MigrationRecord(Base):
     source_story_id = Column(String, nullable=True)
     chapter_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    events = Column(Text, nullable=True)  # JSON数组 [{"year": 1958, "description": "xxx", "source_story_id": "xxx"}]
 
 
 class HistoricalEvent(Base):
