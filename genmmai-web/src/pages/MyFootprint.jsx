@@ -34,7 +34,7 @@ const getBearing = (lat1, lon1, lat2, lon2) => {
 
 // 创建动态大小的标记图标
 const createMarkerIcon = (eventCount, color, year) => {
-  const size = eventCount === 1 ? 28 : eventCount <= 3 ? 36 : 44
+  const size = eventCount === 1 ? 20 : eventCount <= 3 ? 28 : 36
   const fontSize = eventCount === 1 ? 11 : eventCount <= 3 ? 12 : 14
   const displayYear = year ? String(year).slice(-2) : '?'
   return L.divIcon({
