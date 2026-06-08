@@ -260,6 +260,23 @@ class MigrationRecordBase(BaseModel):
     description: Optional[str] = None
     source_story_id: Optional[str] = None
     chapter_id: Optional[str] = None
+    events: Optional[List[dict]] = None  # 新增：events 数组
+
+
+class MigrationRecordUpdate(BaseModel):
+    """编辑迁徙记录的请求体"""
+    place_name: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+    events: Optional[List[dict]] = None  # 支持整体更新 events 数组
+
+
+class MigrationEventAdd(BaseModel):
+    """追加事件的请求体"""
+    year: Optional[int] = None
+    description: Optional[str] = None
 
 
 class MigrateExtractResponseItem(BaseModel):
@@ -306,6 +323,7 @@ class MigrationRecordResponse(MigrationRecordBase):
     id: str
     person_id: str
     chapter_id: Optional[str] = None
+    events: Optional[List[dict]] = None
     class Config:
         from_attributes = True
 
@@ -1528,6 +1546,8 @@ def get_person_relations(person_id: str, db: Session = Depends(get_db)):
 @app.get("/persons/{person_id}/migrations", response_model=List[MigrationRecordResponse])
 def read_person_migrations(person_id: str, db: Session = Depends(get_db)):
     """返回该人物所有迁徙记录，按 year 升序"""
+    import json as json_lib
+
     # 检查人物是否存在
     person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if not person:
@@ -1539,7 +1559,29 @@ def read_person_migrations(person_id: str, db: Session = Depends(get_db)):
         models.MigrationRecord.year.is_(None),
         models.MigrationRecord.year.asc()
     ).all()
-    return records
+
+    # 解析 events 字段
+    result = []
+    for r in records:
+        events = []
+        if r.events:
+            try:
+                events = json_lib.loads(r.events)
+            except:
+                events = []
+        result.append({
+            "id": r.id,
+            "person_id": r.person_id,
+            "place_name": r.place_name,
+            "latitude": r.latitude,
+            "longitude": r.longitude,
+            "year": r.year,
+            "description": r.description,
+            "source_story_id": r.source_story_id,
+            "chapter_id": r.chapter_id,
+            "events": events
+        })
+    return result
 
 
 @app.get("/persons/{person_id}/migrations/by-chapter")
@@ -1692,7 +1734,9 @@ def delete_migration_record(person_id: str, mid: str, sync_to_story: bool = Fals
 
 @app.patch("/persons/{person_id}/migrations/{mid}", response_model=MigrationRecordResponse)
 def update_migration_record(person_id: str, mid: str, migration_update: MigrationRecordUpdate, db: Session = Depends(get_db)):
-    """编辑一条迁徙记录"""
+    """编辑一条迁徙记录（支持 events 数组更新）"""
+    import json as json_lib
+
     record = db.query(models.MigrationRecord).filter(
         models.MigrationRecord.id == mid,
         models.MigrationRecord.person_id == person_id
@@ -1701,6 +1745,17 @@ def update_migration_record(person_id: str, mid: str, migration_update: Migratio
         raise HTTPException(status_code=404, detail="迁徙记录不存在")
 
     update_data = migration_update.model_dump(exclude_unset=True)
+
+    # 处理 events 字段
+    if "events" in update_data and update_data["events"] is not None:
+        # 整体更新 events 数组
+        record.events = json_lib.dumps(update_data["events"], ensure_ascii=False)
+        # 更新顶层 year 和 description（第一条事件）
+        if update_data["events"]:
+            record.year = update_data["events"][0].get("year")
+            record.description = update_data["events"][0].get("description")
+        # 从 update_data 中移除 events，避免重复设置
+        update_data.pop("events", None)
 
     # 提取 sync_to_story 参数
     sync_to_story = update_data.pop("sync_to_story", False)
@@ -1729,6 +1784,90 @@ def update_migration_record(person_id: str, mid: str, migration_update: Migratio
 
     db.commit()
     return record
+
+
+@app.post("/persons/{person_id}/migrations/{mid}/events")
+def add_migration_event(person_id: str, mid: str, event: MigrationEventAdd, db: Session = Depends(get_db)):
+    """追加一个事件到该地点的 events 数组"""
+    import json as json_lib
+
+    record = db.query(models.MigrationRecord).filter(
+        models.MigrationRecord.id == mid,
+        models.MigrationRecord.person_id == person_id
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="迁徙记录不存在")
+
+    # 解析现有 events
+    events = []
+    if record.events:
+        try:
+            events = json_lib.loads(record.events)
+        except:
+            events = []
+
+    # 追加新事件
+    events.append({
+        "year": event.year,
+        "description": event.description,
+        "source_story_id": None  # 手动添加的没有 source_story_id
+    })
+
+    # 更新 record
+    record.events = json_lib.dumps(events, ensure_ascii=False)
+    # 更新顶层 year 和 description（第一条事件）
+    if events:
+        record.year = events[0].get("year")
+        record.description = events[0].get("description")
+
+    db.commit()
+    db.refresh(record)
+
+    # 返回更新后的 events
+    return {"events": events}
+
+
+@app.delete("/persons/{person_id}/migrations/{mid}/events/{event_index}")
+def delete_migration_event(person_id: str, mid: str, event_index: int, db: Session = Depends(get_db)):
+    """按 index 删除 events 数组里的某条事件，如果 events 变为空则删除整条记录"""
+    import json as json_lib
+
+    record = db.query(models.MigrationRecord).filter(
+        models.MigrationRecord.id == mid,
+        models.MigrationRecord.person_id == person_id
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="迁徙记录不存在")
+
+    # 解析现有 events
+    events = []
+    if record.events:
+        try:
+            events = json_lib.loads(record.events)
+        except:
+            events = []
+
+    # 检查索引有效性
+    if event_index < 0 or event_index >= len(events):
+        raise HTTPException(status_code=400, detail="事件索引无效")
+
+    # 删除指定事件
+    events.pop(event_index)
+
+    if not events:
+        # events 变为空，删除整条记录
+        db.delete(record)
+        db.commit()
+        return {"message": "迁徙记录已删除（events 已空）"}
+    else:
+        # 更新 record
+        record.events = json_lib.dumps(events, ensure_ascii=False)
+        # 更新顶层 year 和 description（第一条事件）
+        record.year = events[0].get("year")
+        record.description = events[0].get("description")
+
+        db.commit()
+        return {"message": "事件已删除", "events": events}
 
 
 def extract_locations_from_transcripts(person_id: str, db: Session) -> List[dict]:
