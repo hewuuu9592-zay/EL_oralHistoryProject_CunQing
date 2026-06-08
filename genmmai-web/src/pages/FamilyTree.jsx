@@ -98,7 +98,7 @@ const FamilyTree = () => {
         {/* Logo - 仅展开时显示 */}
         {sidebarExpanded && (
           <div className="h-16 flex items-center justify-center border-b border-[#E5DED3]">
-            <h1 className="text-2xl font-serif text-[#5C3D2E]">根脉</h1>
+            <h1 className="text-2xl font-serif font-bold text-[#5C3D2E]">存青</h1>
           </div>
         )}
 
