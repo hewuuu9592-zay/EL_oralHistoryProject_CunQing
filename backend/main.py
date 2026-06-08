@@ -2520,7 +2520,7 @@ def patch_story(story_id: str, story_update: StoryUpdate, background_tasks: Back
 
 @app.delete("/stories/{story_id}")
 def delete_story(story_id: str, db: Session = Depends(get_db)):
-    """删除故事"""
+    """删除故事（级联删除关联记录）"""
     story = db.query(models.Story).filter(models.Story.id == story_id).first()
     if not story:
         raise HTTPException(status_code=404, detail="故事不存在")
@@ -2535,9 +2535,19 @@ def delete_story(story_id: str, db: Session = Depends(get_db)):
             except Exception as e:
                 print(f"删除音频文件失败: {e}")
 
-    # 删除关联的 StoryPerson 记录
+    # 删除 chapter_stories 关联记录
+    db.query(models.ChapterStory).filter(
+        models.ChapterStory.story_id == story_id
+    ).delete()
+
+    # 删除 story_persons 关联记录
     db.query(models.StoryPerson).filter(
         models.StoryPerson.story_id == story_id
+    ).delete()
+
+    # 删除 story_history_relations 关联记录
+    db.query(models.StoryHistoryRelation).filter(
+        models.StoryHistoryRelation.story_id == story_id
     ).delete()
 
     # 删除故事
