@@ -53,6 +53,10 @@ export const updateMigration = (personId, migrationId, data) => api.patch(`/pers
 export const deleteMigration = (personId, migrationId, syncToStory = false) => api.delete(`/persons/${personId}/migrations/${migrationId}?sync_to_story=${syncToStory}`);
 export const suggestMigrations = (id) => api.get(`/persons/${id}/migrations/suggest`);
 
+// 迁徙事件 API（新增）
+export const addMigrationEvent = (personId, migrationId, data) => api.post(`/persons/${personId}/migrations/${migrationId}/events`, data);
+export const deleteMigrationEvent = (personId, migrationId, eventIndex) => api.delete(`/persons/${personId}/migrations/${migrationId}/events/${eventIndex}`);
+
 // 从故事提取迁徙记录
 export const extractStoryMigrations = (storyId) => api.post(`/stories/${storyId}/extract-migrations`);
 export const confirmStoryMigrations = (storyId, data) => api.post(`/stories/${storyId}/confirm-migrations`, data);
