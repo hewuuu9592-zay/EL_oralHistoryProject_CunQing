@@ -42,10 +42,9 @@ const createMarkerIcon = (eventCount, color, year) => {
     html: `<div style="
       width:${size}px;height:${size}px;background:${color};
       border-radius:50%;display:flex;align-items:center;
-      justify-content:center;color:white;font-weight:bold;
-      font-size:${fontSize}px;border:2px solid #5C3D2E;
+      justify-content:center;border:2px solid #5C3D2E;
       box-shadow:0 2px 6px rgba(0,0,0,0.3);
-    ">${displayYear}</div>`,
+    "></div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   })
