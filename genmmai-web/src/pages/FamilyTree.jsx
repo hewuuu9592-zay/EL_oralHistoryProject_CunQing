@@ -24,6 +24,7 @@ const FamilyTree = () => {
   const [currentPerson, setCurrentPerson] = useState(null)
   const [chapters, setChapters] = useState([])
   const [totalStories, setTotalStories] = useState(0)
+  const [selectedChapterIndex, setSelectedChapterIndex] = useState(0)
   const [showMyInfo, setShowMyInfo] = useState(false)
 
   // 加载数据
@@ -56,7 +57,7 @@ const FamilyTree = () => {
 
   // 开始AI采访
   const handleStartInterview = () => {
-    const firstChapter = chapters.find(c => c.order_index === 1)
+    const firstChapter = chapters.find(c => c.order_index === selectedChapterIndex + 1)
     if (!currentPersonId || !firstChapter) return
     navigate(`/interview?personId=${currentPersonId}&chapterId=${firstChapter.chapter_id}`)
   }
@@ -169,7 +170,7 @@ const FamilyTree = () => {
 
               {/* 第一章卡片 */}
               {(() => {
-                const firstChapter = chapters.find(c => c.order_index === 1)
+                const firstChapter = chapters.find(c => c.order_index === selectedChapterIndex + 1)
                 return firstChapter ? (
                   <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
                     {/* 章节序号和标题 */}
@@ -220,9 +221,10 @@ const FamilyTree = () => {
                     return (
                       <div
                         key={i}
-                        onClick={() => setSidebarTab('stories')}
+                        onClick={() => setSelectedChapterIndex(i)}
                         className={`flex-1 h-2 rounded-full transition-colors cursor-pointer hover:opacity-70 ${
-                          isCompleted ? 'bg-[#D4A574]' : 'bg-gray-200'
+                          i === selectedChapterIndex ? 'bg-[#D4A574]' :  // 当前选中：深棕色
+                          'bg-gray-200'                                    // 未开始：灰色
                         }`}
                       />
                     )
