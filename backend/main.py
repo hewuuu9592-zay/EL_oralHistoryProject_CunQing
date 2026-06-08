@@ -324,6 +324,7 @@ class MigrationRecordResponse(MigrationRecordBase):
     person_id: str
     chapter_id: Optional[str] = None
     events: Optional[List[dict]] = None
+    earliest_year: Optional[int] = None
     class Config:
         from_attributes = True
 
@@ -1545,7 +1546,7 @@ def get_person_relations(person_id: str, db: Session = Depends(get_db)):
 
 @app.get("/persons/{person_id}/migrations", response_model=List[MigrationRecordResponse])
 def read_person_migrations(person_id: str, db: Session = Depends(get_db)):
-    """返回该人物所有迁徙记录，按 year 升序"""
+    """返回该人物所有迁徙记录，按 earliest_year 升序（null 排最后）"""
     import json as json_lib
 
     # 检查人物是否存在
@@ -1555,12 +1556,9 @@ def read_person_migrations(person_id: str, db: Session = Depends(get_db)):
 
     records = db.query(models.MigrationRecord).filter(
         models.MigrationRecord.person_id == person_id
-    ).order_by(
-        models.MigrationRecord.year.is_(None),
-        models.MigrationRecord.year.asc()
     ).all()
 
-    # 解析 events 字段
+    # 解析 events 字段，并计算 earliest_year
     result = []
     for r in records:
         events = []
@@ -1569,6 +1567,22 @@ def read_person_migrations(person_id: str, db: Session = Depends(get_db)):
                 events = json_lib.loads(r.events)
             except:
                 events = []
+
+        # 对 events 数组按 year 升序排序（null 排最后）
+        events_with_sort = []
+        for e in events:
+            events_with_sort.append({
+                **e,
+                "_sort_year": e.get("year") if e.get("year") is not None else 99999
+            })
+        events_with_sort.sort(key=lambda x: x["_sort_year"])
+        # 移除排序辅助字段
+        events = [{k: v for k, v in e.items() if k != "_sort_year"} for e in events_with_sort]
+
+        # 计算 earliest_year
+        years = [e.get("year") for e in events if e.get("year") is not None]
+        earliest_year = min(years) if years else None
+
         result.append({
             "id": r.id,
             "person_id": r.person_id,
@@ -1579,8 +1593,13 @@ def read_person_migrations(person_id: str, db: Session = Depends(get_db)):
             "description": r.description,
             "source_story_id": r.source_story_id,
             "chapter_id": r.chapter_id,
-            "events": events
+            "events": events,
+            "earliest_year": earliest_year
         })
+
+    # 按 earliest_year 升序排序（null 排最后）
+    result.sort(key=lambda x: x["earliest_year"] if x["earliest_year"] is not None else 99999)
+
     return result
 
 
