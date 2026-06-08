@@ -11,27 +11,55 @@ import {
   getChapters,
   getPerson,
 } from '../api'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 
-// 章节颜色
+// 章节颜色 - 11个章节
 const CHAPTER_COLORS = [
-  '#D4A574', '#8B7355', '#5C3D2E', '#A67C52', '#C4A484',
-  '#9B8B7A', '#6B5B4E', '#B8956E', '#7D6B5A', '#8C7A6A', '#6E5D4E'
+  '#C9A84C', '#8B7355', '#5C8A6B', '#5C7A8B', '#8B5C6B',
+  '#7A6B8B', '#8B7A5C', '#6B8B5C', '#8B6B5C', '#5C6B8B', '#7B5C8B'
 ]
+const DEFAULT_COLOR = '#AAAAAA'
 
-// 自定义圆形 marker
-const createIcon = (year, color, isActive = true) => L.divIcon({
+// 计算两点之间的方位角
+const getBearing = (lat1, lon1, lat2, lon2) => {
+  const φ1 = lat1 * Math.PI / 180
+  const φ2 = lat2 * Math.PI / 180
+  const Δλ = (lon2 - lon1) * Math.PI / 180
+  const x = Math.sin(Δλ) * Math.cos(φ2)
+  const y = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)
+  const θ = Math.atan2(x, y)
+  return (θ * 180 / Math.PI + 360) % 360
+}
+
+// 创建动态大小的标记图标
+const createMarkerIcon = (eventCount, color, year) => {
+  const size = eventCount === 1 ? 28 : eventCount <= 3 ? 36 : 44
+  const fontSize = eventCount === 1 ? 11 : eventCount <= 3 ? 12 : 14
+  const displayYear = year ? String(year).slice(-2) : '?'
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      width:${size}px;height:${size}px;background:${color};
+      border-radius:50%;display:flex;align-items:center;
+      justify-content:center;color:white;font-weight:bold;
+      font-size:${fontSize}px;border:2px solid #5C3D2E;
+      box-shadow:0 2px 6px rgba(0,0,0,0.3);
+    ">${displayYear}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  })
+}
+
+// 创建方向箭头图标
+const createArrowIcon = (bearing) => L.divIcon({
   className: '',
   html: `<div style="
-    width:32px;height:32px;background:${isActive ? color : '#CCC'};
-    border-radius:50%;display:flex;align-items:center;
-    justify-content:center;color:white;font-weight:bold;
-    font-size:11px;border:2px solid ${isActive ? '#5C3D2E' : '#999'};
-    box-shadow:0 2px 6px rgba(0,0,0,0.3);opacity:${isActive ? 1 : 0.5};
-  ">${year ? String(year).slice(-2) : '?'}</div>`,
-  iconSize: [32, 32],
-  iconAnchor: [16, 16],
+    width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
+    border-bottom:10px solid #5C3D2E;opacity:0.7;transform:rotate(${bearing}deg);
+  "></div>`,
+  iconSize: [12, 10],
+  iconAnchor: [6, 5],
 })
 
 // 自动适配所有点的组件
@@ -292,11 +320,61 @@ const AddMigrationModal = ({ migration, onSave, onCancel }) => {
 }
 
 // 地图组件
-const MapView = ({ migrations }) => {
-  const validMigrations = migrations.filter(m =>
-    m.latitude != null && m.longitude != null &&
-    !isNaN(Number(m.latitude)) && !isNaN(Number(m.longitude))
-  )
+// 空状态提示组件
+const EmptyState = () => {
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      text-align:center;color:#888;font-size:14px;pointer-events:none;
+    ">还没有足迹，去录入故事后提取吧</div>`,
+    iconSize: [200, 40],
+    iconAnchor: [100, 20],
+  })
+}
+
+const MapView = ({ migrations, chapters }) => {
+  // 过滤有坐标的地点，按 earliest_year 升序排列
+  const validMigrations = useMemo(() => {
+    return migrations
+      .filter(m => m.latitude != null && m.longitude != null && !isNaN(Number(m.latitude)) && !isNaN(Number(m.longitude)))
+      .sort((a, b) => {
+        if (a.earliest_year == null && b.earliest_year == null) return 0
+        if (a.earliest_year == null) return 1
+        if (b.earliest_year == null) return -1
+        return a.earliest_year - b.earliest_year
+      })
+  }, [migrations])
+
+  // 建立 chapter 颜色映射
+  const chapterColorMap = useMemo(() => {
+    const map = {}
+    chapters.forEach(c => {
+      map[c.id] = CHAPTER_COLORS[(c.order_index - 1) % CHAPTER_COLORS.length]
+    })
+    return map
+  }, [chapters])
+
+  // 提取折线坐标
+  const linePositions = useMemo(() => {
+    return validMigrations
+      .filter(m => m.earliest_year != null)
+      .map(m => [Number(m.latitude), Number(m.longitude)])
+  }, [validMigrations])
+
+  // 计算箭头位置和角度
+  const arrows = useMemo(() => {
+    const result = []
+    for (let i = 0; i < linePositions.length - 1; i++) {
+      const [lat1, lon1] = linePositions[i]
+      const [lat2, lon2] = linePositions[i + 1]
+      const bearing = getBearing(lat1, lon1, lat2, lon2)
+      const midLat = (lat1 + lat2) / 2
+      const midLon = (lon1 + lon2) / 2
+      result.push({ position: [midLat, midLon], bearing })
+    }
+    return result
+  }, [linePositions])
 
   const center = validMigrations.length > 0
     ? [Number(validMigrations[0].latitude), Number(validMigrations[0].longitude)]
@@ -309,27 +387,48 @@ const MapView = ({ migrations }) => {
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <FitBounds migrations={validMigrations} />
+
+      {/* 折线连接 */}
+      {linePositions.length > 1 && (
+        <Polyline
+          positions={linePositions}
+          pathOptions={{ color: '#5C3D2E', weight: 2, opacity: 0.6 }}
+        />
+      )}
+
+      {/* 方向箭头 */}
+      {arrows.map((arrow, idx) => (
+        <Marker key={`arrow-${idx}`} position={arrow.position} icon={createArrowIcon(arrow.bearing)} />
+      ))}
+
+      {/* 标记点 */}
       {validMigrations.map(m => {
         const events = m.events || []
+        const eventCount = events.length
+        const color = m.chapter_id ? chapterColorMap[m.chapter_id] || DEFAULT_COLOR : DEFAULT_COLOR
+
         return (
           <Marker
             key={m.id}
             position={[Number(m.latitude), Number(m.longitude)]}
-            icon={createIcon(m.year, '#5C3D2E', true)}
+            icon={createMarkerIcon(eventCount, color, m.earliest_year)}
           >
             <Popup>
               <div className="text-sm max-w-[250px]">
                 <div className="font-medium text-[#5C3D2E] mb-2">{m.place_name}</div>
                 {events.length > 0 && (
-                  <div className="space-y-1">
+                  <div className="space-y-1 mb-2">
                     {events.map((e, idx) => (
                       <div key={idx} className="text-xs border-l-2 border-[#D4A574] pl-2">
-                        <span className="font-medium">{e.year || '?'}年</span>
+                        {e.year && <span className="font-medium">{e.year}年</span>}
                         <span className="text-gray-500 ml-1">{e.description}</span>
                       </div>
                     ))}
                   </div>
                 )}
+                <div className="text-xs text-gray-400 border-t pt-1 mt-1">
+                  共{eventCount}段记忆
+                </div>
               </div>
             </Popup>
           </Marker>
@@ -341,6 +440,7 @@ const MapView = ({ migrations }) => {
 
 const MyFootprint = ({ personId }) => {
   const [migrations, setMigrations] = useState([])
+  const [chapters, setChapters] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingMigration, setEditingMigration] = useState(null)
@@ -352,8 +452,12 @@ const MyFootprint = ({ personId }) => {
   const fetchData = async () => {
     setLoading(true)
     try {
-      const res = await getPersonMigrations(personId)
-      setMigrations(res.data || [])
+      const [migRes, chapRes] = await Promise.all([
+        getPersonMigrations(personId),
+        getChapters()
+      ])
+      setMigrations(migRes.data || [])
+      setChapters(chapRes.data || [])
     } catch (error) {
       console.error('Failed to load data:', error)
     } finally {
@@ -365,9 +469,9 @@ const MyFootprint = ({ personId }) => {
     if (personId) fetchData()
   }, [personId])
 
-  // 统计
+  // 统计 - 使用 earliest_year
   const stats = useMemo(() => {
-    const years = migrations.map(m => m.year).filter(y => y)
+    const years = migrations.map(m => m.earliest_year).filter(y => y)
     const minYear = years.length > 0 ? Math.min(...years) : null
     const maxYear = years.length > 0 ? Math.max(...years) : null
     const eventCount = migrations.reduce((sum, m) => sum + (m.events?.length || 0), 0)
@@ -428,7 +532,7 @@ const MyFootprint = ({ personId }) => {
     <div className="h-full flex flex-col">
       {/* 地图区域 */}
       <div className="h-[50%] relative">
-        <MapView migrations={migrations} />
+        <MapView migrations={migrations} chapters={chapters} />
       </div>
 
       {/* 下方列表区域 */}
