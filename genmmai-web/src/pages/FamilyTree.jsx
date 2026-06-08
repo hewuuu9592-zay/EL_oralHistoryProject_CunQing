@@ -59,14 +59,9 @@ const FamilyTree = () => {
   }, [])
 
   // 开始AI采访
-  const handleStartInterview = async () => {
+  const handleStartInterview = () => {
     if (!currentPersonId || !nextChapter) return
-    try {
-      const res = await startInterview(currentPersonId, { chapter_id: nextChapter.chapter_id })
-      navigate(`/interview?sessionId=${res.data.session_id}`)
-    } catch (err) {
-      console.error('开始采访失败:', err)
-    }
+    navigate(`/interview?personId=${currentPersonId}&chapterId=${nextChapter.chapter_id}`)
   }
 
   // 跳过当前章节
