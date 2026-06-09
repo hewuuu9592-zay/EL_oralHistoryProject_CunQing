@@ -2868,6 +2868,19 @@ def delete_story(story_id: str, db: Session = Depends(get_db)):
         models.StoryHistoryRelation.story_id == story_id
     ).delete()
 
+    # 删除关联的采访会话（如果存在）
+    if story.source_session_id:
+        session_id = story.source_session_id
+        # 删除所有轮次
+        db.query(models.InterviewRound).filter(
+            models.InterviewRound.session_id == session_id
+        ).delete()
+        # 删除会话
+        db.query(models.InterviewSession).filter(
+            models.InterviewSession.id == session_id
+        ).delete()
+        print(f"已删除关联的采访会话: {session_id}")
+
     # 删除故事
     db.delete(story)
     db.commit()
