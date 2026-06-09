@@ -445,7 +445,7 @@ const FamilyMembers = ({ onSelectPerson }) => {
         {Object.keys(familyMembers).every(g => (familyMembers[g] || []).length === 0) && (
           <div className="text-center py-16">
             <div className="text-4xl mb-4">👨‍👩‍👧‍👦</div>
-            <p className="text-[#8B7355] mb-2">还没有家人</p>
+            <p className="text-[#8B7355] mb-2">还未录入信息</p>
             <p className="text-sm text-gray-500 mb-4">点击右上角添加家人</p>
             <button
               onClick={() => setShowAddModal(true)}
