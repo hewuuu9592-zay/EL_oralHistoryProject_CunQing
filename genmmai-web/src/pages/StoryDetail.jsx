@@ -387,7 +387,7 @@ const StoryDetail = () => {
       {story.audio_url && (
         <audio
           ref={audioRef}
-          src={story.audio_url}
+          src={story.audio_url?.startsWith('http') ? story.audio_url : `http://localhost:8000${story.audio_url}`}
           preload="metadata"
         />
       )}
@@ -645,7 +645,7 @@ const StoryDetail = () => {
                       {round.audio_url && (
                         <div className="mt-2">
                           <audio
-                            src={round.audio_url}
+                            src={round.audio_url?.startsWith('http') ? round.audio_url : `http://localhost:8000${round.audio_url}`}
                             controls
                             className="w-full h-8"
                           />

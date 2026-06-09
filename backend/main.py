@@ -44,6 +44,7 @@ app = FastAPI(title="根脉 API")
 UPLOAD_DIR = "uploads/audio"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # CORS - 允许开发环境跨域
 app.add_middleware(
