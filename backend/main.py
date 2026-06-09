@@ -3308,7 +3308,10 @@ def regenerate_polish(story_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="原始转录为空，无法生成润色版")
 
     # 调用 OpenAI 重新生成润色版
-    client = OpenAI(api_key=os.getenv("ARK_API_KEY"))
+    client = OpenAI(
+        api_key=os.getenv("ARK_API_KEY"),
+        base_url="https://ark.cn-beijing.volces.com/api/v3",
+    )
 
     # 获取结构化信息作为上下文
     layer2_info = ""
