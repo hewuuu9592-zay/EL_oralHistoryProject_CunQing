@@ -124,6 +124,12 @@ class TagRequest(BaseModel):
     transcript: str
 
 
+class TranscriptUpdateItem(BaseModel):
+    """转录更新项"""
+    round_id: str
+    transcript: str
+
+
 # ============= Interview Models =============
 
 class InterviewStartResponse(BaseModel):
@@ -1466,13 +1472,10 @@ def abandon_interview(session_id: str, db: Session = Depends(get_db)):
 @app.patch("/interviews/{session_id}/transcripts")
 def update_interview_transcripts(
     session_id: str,
-    request: list,
+    request: List[TranscriptUpdateItem],
     db: Session = Depends(get_db)
 ):
     """批量更新采访轮次的转录文字"""
-    if not request or not isinstance(request, list):
-        raise HTTPException(status_code=400, detail="请求数据格式错误")
-
     # 验证会话存在
     session = db.query(models.InterviewSession).filter(
         models.InterviewSession.id == session_id
@@ -1483,8 +1486,8 @@ def update_interview_transcripts(
     # 批量更新转录
     updated_count = 0
     for item in request:
-        round_id = item.get("round_id")
-        transcript = item.get("transcript")
+        round_id = item.round_id
+        transcript = item.transcript
 
         if not round_id or transcript is None:
             continue
