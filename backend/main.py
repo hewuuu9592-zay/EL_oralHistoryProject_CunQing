@@ -1463,6 +1463,47 @@ def abandon_interview(session_id: str, db: Session = Depends(get_db)):
     return {"message": "采访已放弃"}
 
 
+@app.patch("/interviews/{session_id}/transcripts")
+def update_interview_transcripts(
+    session_id: str,
+    request: list,
+    db: Session = Depends(get_db)
+):
+    """批量更新采访轮次的转录文字"""
+    if not request or not isinstance(request, list):
+        raise HTTPException(status_code=400, detail="请求数据格式错误")
+
+    # 验证会话存在
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.id == session_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="采访会话不存在")
+
+    # 批量更新转录
+    updated_count = 0
+    for item in request:
+        round_id = item.get("round_id")
+        transcript = item.get("transcript")
+
+        if not round_id or transcript is None:
+            continue
+
+        # 查找轮次记录
+        round_record = db.query(models.InterviewRound).filter(
+            models.InterviewRound.id == round_id,
+            models.InterviewRound.session_id == session_id
+        ).first()
+
+        if round_record:
+            round_record.transcript = transcript
+            updated_count += 1
+
+    db.commit()
+
+    return {"updated_count": updated_count}
+
+
 @app.delete("/interviews/{session_id}")
 def delete_interview(session_id: str, db: Session = Depends(get_db)):
     """删除采访记录及关联故事"""

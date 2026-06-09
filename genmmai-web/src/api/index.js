@@ -116,4 +116,9 @@ export const getPersonInterviews = (personId) => api.get(`/persons/${personId}/i
 export const getSessionRounds = (sessionId) => api.get(`/interviews/${sessionId}/rounds`);
 export const getStoryGenerationStatus = (storyId) => api.get(`/stories/${storyId}/generation-status`);
 
+// 批量更新采访转录
+export const updateInterviewTranscripts = (sessionId, transcripts) => {
+  return api.patch(`/interviews/${sessionId}/transcripts`, transcripts);
+};
+
 export default api;

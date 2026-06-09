@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { getPerson, startInterview, submitInterviewAnswer, getInterviewRoundStatus, getNextQuestion, completeInterview, abandonInterview, getPersonInterviews, getStoryGenerationStatus, getStory } from '../api';
+import { getPerson, startInterview, submitInterviewAnswer, getInterviewRoundStatus, getNextQuestion, completeInterview, abandonInterview, getPersonInterviews, getStoryGenerationStatus, getStory, updateInterviewTranscripts } from '../api';
 
 // 录音辅助函数
 
@@ -10,7 +10,7 @@ const InterviewPage = () => {
   const personId = searchParams.get('personId') || localStorage.getItem('current_person_id');
   const chapterId = searchParams.get('chapterId');
 
-  const [stage, setStage] = useState('loading'); // loading | ready | interviewing | completing | done
+  const [stage, setStage] = useState('loading'); // loading | ready | interviewing | reviewing | completing | done
 
   const [person, setPerson] = useState(null);
   const [session, setSession] = useState(null);
@@ -32,6 +32,10 @@ const InterviewPage = () => {
   const [storiesCreated, setStoriesCreated] = useState(0);
   const [generatedStories, setGeneratedStories] = useState([]);
   const [showExitModal, setShowExitModal] = useState(false);
+
+  // 审查阶段 - 转录编辑状态
+  const [editedTranscripts, setEditedTranscripts] = useState({});
+  const [reviewingLoading, setReviewingLoading] = useState(false);
 
   // 生成进度相关状态
   const [currentStoryId, setCurrentStoryId] = useState(null);
@@ -281,10 +285,63 @@ const InterviewPage = () => {
     }
   };
 
-  // 结束采访
-  const handleComplete = async () => {
-    setStage('completing');
-    await handleSave();
+  // 结束采访 - 进入审查阶段
+  const handleComplete = () => {
+    // 初始化编辑状态，预填当前转录内容
+    const initialTranscripts = {};
+    rounds.forEach((r, i) => {
+      if (r.transcript) {
+        initialTranscripts[i] = r.transcript;
+      }
+    });
+    setEditedTranscripts(initialTranscripts);
+    setStage('reviewing');
+  };
+
+  // 确认转录并生成故事
+  const handleConfirmAndGenerate = async () => {
+    if (!session) return;
+
+    setReviewingLoading(true);
+    try {
+      // 1. 收集修改后的转录，构造请求数据
+      const transcriptsData = [];
+      rounds.forEach((r, i) => {
+        if (r.id && editedTranscripts[i]) {
+          transcriptsData.push({
+            round_id: r.id,
+            transcript: editedTranscripts[i],
+          });
+        }
+      });
+
+      // 2. 批量更新转录
+      if (transcriptsData.length > 0) {
+        await updateInterviewTranscripts(session.id, transcriptsData);
+      }
+
+      // 3. 更新本地 rounds 数据
+      setRounds(prev => prev.map((r, i) => {
+        if (editedTranscripts[i] !== undefined) {
+          return { ...r, transcript: editedTranscripts[i] };
+        }
+        return r;
+      }));
+
+      // 4. 进入生成流程
+      setStage('completing');
+      await handleSave();
+    } catch (e) {
+      console.error('确认转录失败:', e);
+      alert('确认失败，请重试');
+    } finally {
+      setReviewingLoading(false);
+    }
+  };
+
+  // 返回采访
+  const handleBackToInterview = () => {
+    setStage('interviewing');
   };
 
   // 放弃采访
@@ -666,7 +723,69 @@ const InterviewPage = () => {
     );
   }
 
-  // ========== 阶段三：完成确认 ==========
+  // ========== 阶段三：审查转录 ==========
+  if (stage === 'reviewing') {
+    const validRounds = rounds.filter(r => r.transcript);
+
+    return (
+      <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
+        <div className="bg-white border-b border-[#E5DED3] px-4 py-4 text-center">
+          <h1 className="text-lg font-bold text-[#4A3728]">请检查转录内容</h1>
+          <p className="text-sm text-gray-500 mt-1">可以修改错别字或人名，修改后再生成故事</p>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4">
+          <div className="max-w-sm mx-auto space-y-6">
+            {validRounds.map((r, i) => (
+              <div key={i} className="bg-white rounded-xl p-4 shadow-sm">
+                {/* AI问题 */}
+                <div className="mb-3">
+                  <div className="text-xs text-gray-400 mb-1">问题 {i + 1}</div>
+                  <div className="text-sm text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                    {r.question}
+                  </div>
+                </div>
+
+                {/* 回答转录 - 可编辑 */}
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">回答 {i + 1}</div>
+                  <textarea
+                    value={editedTranscripts[i] || ''}
+                    onChange={(e) => setEditedTranscripts(prev => ({
+                      ...prev,
+                      [i]: e.target.value,
+                    }))}
+                    className="w-full text-sm text-gray-700 bg-[#FFF8EE] rounded-lg px-3 py-2 border border-[#E5DED3] focus:border-[#C9A84C] focus:outline-none resize-none"
+                    rows={Math.max(3, (editedTranscripts[i] || '').split('\n').length + 1)}
+                    placeholder="请输入转录内容..."
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 底部按钮 */}
+        <div className="bg-white border-t border-[#E5DED3] p-4 space-y-3">
+          <button
+            onClick={handleConfirmAndGenerate}
+            disabled={reviewingLoading}
+            className="w-full py-3 bg-[#4A3728] text-white rounded font-bold disabled:opacity-50"
+          >
+            {reviewingLoading ? '保存中...' : '确认无误，生成故事'}
+          </button>
+          <button
+            onClick={handleBackToInterview}
+            className="w-full py-2 text-gray-500 text-sm"
+          >
+            返回采访
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ========== 阶段四：完成确认 ==========
   if (stage === 'completing') {
     // 轮询超时，显示提示
     if (pollTimeout) {
