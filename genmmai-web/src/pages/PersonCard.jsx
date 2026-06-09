@@ -5,7 +5,7 @@ import {
   updatePerson, getRelationships, deleteRelationship, createRelationship,
   getPersons, getPersonInterviews, getSessionRounds, deleteInterview
 } from '../api';
-import MigrationMapTab from './MigrationMapTab';
+// import MigrationMapTab from './MigrationMapTab';
 // ========== 主题颜色映射 ==========
 const THEME_COLORS = {
   '家乡记忆': { bg: '#DCFCE7', text: '#166534', emoji: '🏠' },
