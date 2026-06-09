@@ -1,6 +1,6 @@
 import { Routes, Route, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
-import FamilyTree from './pages/FamilyTree'
+import MyMemoir from './pages/MyMemoir'
 // import PersonCard from './pages/PersonCard'
 import StoryDetail from './pages/StoryDetail'
 import RecordStory from './pages/RecordStory'
@@ -35,7 +35,7 @@ function App() {
   return (
     <div className="min-h-screen bg-[#F5F1E9]">
       <Routes>
-        <Route path="/" element={<FamilyTree />} />
+        <Route path="/" element={<MyMemoir />} />
         {/* <Route path="/person/:id" element={<PersonCard />} /> */}
         <Route path="/story/:id" element={<StoryDetail />} />
         <Route path="/record" element={<RecordStory />} />

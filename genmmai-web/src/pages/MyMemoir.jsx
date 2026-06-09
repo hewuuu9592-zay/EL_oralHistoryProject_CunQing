@@ -14,7 +14,7 @@ const formatDate = () => {
   return now.toLocaleDateString('zh-CN', options)
 }
 
-const FamilyTree = () => {
+const MyMemoir = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState(true)
@@ -367,4 +367,4 @@ const MyInfoModal = ({ person, onSave, onClose }) => {
   )
 }
 
-export default FamilyTree
+export default MyMemoir
