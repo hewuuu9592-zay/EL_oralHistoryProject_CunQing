@@ -148,11 +148,23 @@ const StoryDetail = () => {
 
     try {
       if (activeTab === 'story') {
-        // Tab1: 保存 narrative_polish
-        await patchStory(id, { narrative_polish: editNarrativePolish });
+        // Tab1: 根据当前视图决定保存到哪个字段
+        if (showPolished) {
+          // 润色版视图 → 保存到 narrative_polish
+          await patchStory(id, { narrative_polish: editNarrativePolish });
+        } else {
+          // 原始转录视图 → 保存到 transcript
+          await patchStory(id, { transcript: editNarrativePolish });
+        }
+        // 立即刷新
+        const res = await getStory(id);
+        setStory(res.data);
       } else if (activeTab === 'transcript' && story?.source_session_id) {
         // Tab2: 保存对话轮次
         await patchStory(id, { transcript: editRounds.map(r => r.transcript).join('\n\n') });
+        // 立即刷新
+        const res = await getStory(id);
+        setStory(res.data);
       } else if (activeTab === 'structured') {
         // Tab3: 保存结构化信息
         await patchStory(id, {
@@ -166,11 +178,10 @@ const StoryDetail = () => {
           key_events: editStructured.key_events,
           time_range: editStructured.time_range || null,
         });
+        // 立即刷新
+        const res = await getStory(id);
+        setStory(res.data);
       }
-
-      // 刷新故事数据
-      const res = await getStory(id);
-      setStory(res.data);
       setIsEditing(false);
     } catch (err) {
       console.error('保存失败:', err);
