@@ -115,7 +115,6 @@ class StoryBase(BaseModel):
     summary: Optional[str] = None
     year: Optional[int] = None
     decade: Optional[str] = None
-    theme: Optional[str] = None
     transcription_status: Optional[str] = "pending"
     ai_tag_status: Optional[str] = "untagged"
     chapter_id: Optional[str] = None  # 关联的章节ID
@@ -216,7 +215,6 @@ class StoryWithPersons(BaseModel):
     summary: Optional[str] = None
     year: Optional[int] = None
     decade: Optional[str] = None
-    theme: Optional[str] = None
     related_history_id: Optional[str] = None
     related_history: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -243,7 +241,6 @@ class StoryFullCreate(BaseModel):
     summary: Optional[str] = None
     year: Optional[int] = None
     decade: Optional[str] = None
-    theme: Optional[str] = None
     person_ids: List[str] = []
     protagonist_id: Optional[str] = None
 
@@ -252,7 +249,6 @@ class StoryUpdate(BaseModel):
     transcript: Optional[str] = None
     narrative_polish: Optional[str] = None
     year: Optional[int] = None
-    theme: Optional[str] = None
     person_ids: Optional[List[str]] = None
     related_history_id: Optional[str] = None
     related_history: Optional[str] = None
@@ -532,11 +528,6 @@ def delete_relationship(rel_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "关系已删除"}
 
-THEMES = [
-    "家乡记忆", "工作岁月", "爱情婚姻", "历史亲历",
-    "家族传承", "童年往事", "其他"
-]
-
 # 引导问题库
 SUGGEST_QUESTIONS = [
     "您小时候最难忘的一件事是什么？",
@@ -577,106 +568,32 @@ def read_person_stories(person_id: str, db: Session = Depends(get_db)):
     return stories
 
 
-@app.get("/persons/{person_id}/stories/themes")
-def get_person_story_themes(person_id: str, db: Session = Depends(get_db)):
-    """返回该人物所有故事的主题分布"""
-    # 获取该人物所有故事的主题
-    sp_records = db.query(models.StoryPerson).filter(models.StoryPerson.person_id == person_id).all()
-    story_ids = [sp.story_id for sp in sp_records]
-
-    if not story_ids:
-        # 没有故事时，所有主题 count 都为 0
-        return [{"theme": theme, "count": 0} for theme in THEMES]
-
-    stories = db.query(models.Story.theme, models.Story.id).filter(models.Story.id.in_(story_ids)).all()
-
-    # 统计各主题数量
-    theme_counts = {}
-    for theme in THEMES:
-        theme_counts[theme] = 0
-
-    for story in stories:
-        theme = story.theme or "其他"
-        if theme in theme_counts:
-            theme_counts[theme] += 1
-        else:
-            theme_counts["其他"] += 1
-
-    return [{"theme": theme, "count": count} for theme, count in theme_counts.items()]
-
-
 @app.get("/persons/{person_id}/suggest-question")
 def suggest_question(person_id: str, db: Session = Depends(get_db)):
     """返回引导问题"""
     # 获取人物信息
     person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if person is None:
-        return {"question": "您有什么想留给后代的故事吗？", "suggested_theme": "其他"}
+        return {"question": "您有什么想留给后代的故事吗？"}
 
-    # 1. 查询该人物已有故事的主题分布
-    sp_records = db.query(models.StoryPerson).filter(models.StoryPerson.person_id == person_id).all()
-    story_ids = [sp.story_id for sp in sp_records]
-
-    existing_themes = []
-    missing_themes = []
-
-    if story_ids:
-        stories = db.query(models.Story.theme).filter(models.Story.id.in_(story_ids)).all()
-        existing_themes = [s.theme for s in stories if s.theme]
-        # 找出没有讲述过的主题
-        missing_themes = [t for t in THEMES if t not in existing_themes]
-
-    # 2. 确定要提问的主题
-    if missing_themes:
-        suggested_theme = missing_themes[0]
-    elif existing_themes:
-        # 所有主题都有了，随机深挖一个
-        suggested_theme = random.choice(existing_themes)
-    else:
-        # 没有任何故事，随机选一个
-        suggested_theme = random.choice(THEMES)
-
-    existing_str = "、" .join(existing_themes) if existing_themes else "暂无"
-
-    # 3. 查询该人物生命跨度内的重大历史事件
     birth_year = person.birth_year or 1950
-    current_year = datetime.now().year
 
-    # 先查 importance=3 的
+    # 查询该人物生命跨度内的重大历史事件
+    current_year = datetime.now().year
     major_events = db.query(models.HistoricalEvent).filter(
         models.HistoricalEvent.year >= birth_year,
         models.HistoricalEvent.year <= current_year,
-        models.HistoricalEvent.importance == 3
+        models.HistoricalEvent.importance >= 2
     ).order_by(models.HistoricalEvent.year.asc()).all()
 
-    # 如果太少，补充一些 importance=2 的
-    if len(major_events) < 3:
-        more_events = db.query(models.HistoricalEvent).filter(
-            models.HistoricalEvent.year >= birth_year,
-            models.HistoricalEvent.year <= current_year,
-            models.HistoricalEvent.importance >= 2
-        ).order_by(models.HistoricalEvent.year.asc()).all()
-
-        # 合并去重
-        existing_ids = {e.id for e in major_events}
-        for e in more_events:
-            if e.id not in existing_ids and len(major_events) < 8:
-                major_events.append(e)
-
-    events_list = [f"{e.year}年{e.title}" for e in major_events]
+    events_list = [f"{e.year}年{e.title}" for e in major_events][:8]
     events_str = "、".join(events_list) if events_list else "暂无重大历史事件"
 
-    # 4. 调用豆包模型生成引导问题
+    # 调用豆包模型生成引导问题
     api_key = os.getenv("ARK_API_KEY", "")
     question = None
 
-    # 根据性别确定代词
-    if person.gender == "女":
-        pronoun = "她"
-        younger_pronoun = "她"
-    else:
-        pronoun = "他"
-        younger_pronoun = "他"
+    pronoun = "她" if person.gender == "女" else "他"
 
     if api_key:
         try:
@@ -685,7 +602,7 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
                 base_url="https://ark.cn-beijing.volces.com/api/v3",
             )
 
-            prompt = f"""你是一位温柔、耐心、善于倾听的家庭回忆助手，正在陪伴一位老年人回忆往事。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：。{pronoun}已经讲述了这些主题的故事：{existing_str}。请为'{suggested_theme}'这个主题，生成一个温暖具体的引导问题。可以结合{pronoun}亲历的历史背景，例如可以问'{pronoun}经历某事件时在做什么'或'某事件后{pronoun}的生活发生了什么变化'。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身，不要任何前缀。"""
+            prompt = f"""你是一位温柔、耐心、善于倾听的家庭回忆助手，正在陪伴一位老年人回忆往事。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：{events_str}。请生成一个温暖具体的引导问题，帮助{person.name}回忆往事。可以结合{pronoun}亲历的历史背景。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身，不要任何前缀。"""
 
             response = client.chat.completions.create(
                 model="ep-20260521233914-gllp4",
@@ -695,7 +612,6 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
 
             question = response.choices[0].message.content.strip()
 
-            # 去除可能的引号
             if question.startswith('"') and question.endswith('"'):
                 question = question[1:-1]
 
@@ -703,20 +619,11 @@ def suggest_question(person_id: str, db: Session = Depends(get_db)):
             print(f"豆包 API 调用失败: {str(e)}")
             question = None
 
-    # 5. 回退逻辑
+    # 回退逻辑
     if not question:
-        fallback_questions = {
-            "家乡记忆": f"{person.name}小时候住在哪儿，那边有什么好玩的事？",
-            "工作岁月": f"{person.name}年轻时做什么工作？有什么难忘的事？",
-            "爱情婚姻": f"{person.name}是怎么认识家人的？",
-            "历史亲历": f"{person.name}经历过什么特别的时代？",
-            "家族传承": f"{person.name}家里有什么传统或手艺？",
-            "童年往事": f"{person.name}小时候最喜欢玩什么？",
-            "其他": "您有什么想留给后代的故事吗？",
-        }
-        question = fallback_questions.get(suggested_theme, "您有什么想留给后代的故事吗？")
+        question = f"{person.name}有什么想留给后代的故事吗？"
 
-    return {"question": question, "suggested_theme": suggested_theme}
+    return {"question": question}
 
 
 # ============= Interview APIs =============
@@ -808,39 +715,7 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
         if not topic_hint:
             topic_hint = chapter.title
     else:
-        # 原有逻辑：AI生成第一问
-        # 获取用户偏好的主题
-        preferred_themes = request.get("preferred_themes", [])
-        preferred_str = "、".join(preferred_themes) if preferred_themes else ""
-
-        # 分析该人物已有故事的空白主题
-        sp_records = db.query(models.StoryPerson).filter(
-            models.StoryPerson.person_id == person_id
-        ).all()
-        story_ids = [sp.story_id for sp in sp_records]
-
-        existing_themes = []
-        missing_themes = []
-        if story_ids:
-            stories = db.query(models.Story.theme).filter(
-                models.Story.id.in_(story_ids)
-            ).all()
-            existing_themes = [s.theme for s in stories if s.theme]
-            missing_themes = [t for t in THEMES if t not in existing_themes]
-
-        # 确定本次采访的主题方向：优先从用户选择的主题中选
-        if preferred_themes:
-            candidate_themes = [t for t in preferred_themes if t in missing_themes] or preferred_themes
-            suggested_theme = candidate_themes[0]
-        elif missing_themes:
-            suggested_theme = missing_themes[0]
-        elif existing_themes:
-            suggested_theme = random.choice(existing_themes)
-        else:
-            suggested_theme = random.choice(THEMES)
-        topic_hint = suggested_theme
-
-        # 生成第一个引导问题（结合历史语境）
+        # AI生成第一问
         api_key = os.getenv("ARK_API_KEY", "")
         birth_year = person.birth_year or 1950
 
@@ -854,11 +729,7 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
         events_list = [f"{e.year}年{e.title}" for e in major_events][:8]
         events_str = "、".join(events_list) if events_list else "暂无重大历史事件"
 
-        existing_str = "、".join(existing_themes) if existing_themes else "暂无"
         pronoun = "她" if person.gender == "女" else "他"
-
-        # 生成 prompt 时加入用户偏好主题-prompt1
-        theme_constraint = f"今天用户希望聊的主题是：{preferred_str}，请优先围绕这些主题生成引导问题。" if preferred_str else ""
 
         if api_key:
             try:
@@ -867,7 +738,7 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
                     base_url="https://ark.cn-beijing.volces.com/api/v3",
                 )
 
-                prompt = f"""你是一位温柔的擅长层层递进地、以令人舒服的方式提问的家族口述史采访者。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：{events_str}。{pronoun}已经讲述了这些主题的��事��{existing_str}。{theme_constraint}请为'{suggested_theme}'这个主题，生成第一个温暖具体的引导问题。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身。"""
+                prompt = f"""你是一位温柔的擅长层层递进地、以令人舒服的方式提问的家族口述史采访者。这位长辈名叫{person.name}，生于{birth_year}年。{pronoun}经历的重大历史事件包括：{events_str}。请为{person.name}生成第一个温暖具体的引导问题，帮助{person.name}回忆往事。要求口语化，像晚辈在问长辈，不超过35字，直接返回问题本身。"""
 
                 response = client.chat.completions.create(
                     model="ep-20260521233914-gllp4",
@@ -884,16 +755,7 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
                 question = None
 
         if not question:
-            fallback_qs = {
-                "家乡记忆": f"{person.name}给我们讲讲您小时候的故事吧？",
-                "工作岁月": f"{person.name}您年轻时候有什么难忘的工作经历？",
-                "爱情婚姻": f"{person.name}您是怎么认识家人的？",
-                "历史亲历": f"{person.name}您还记得那些年经历过的特别的事吗？",
-                "家族传承": f"{person.name}家里有什么传统想传给我们的？",
-                "童年往事": f"{person.name}您小时候有什么有趣的故事？",
-                "其他": f"{person.name}您有什么想留给后代的故事吗？",
-            }
-            question = fallback_qs.get(suggested_theme, f"{person.name}给我们讲讲您的故事吧？")
+            question = f"{person.name}给我们讲讲您的故事吧？"
 
     # 创建采访会话
     session = models.InterviewSession(
@@ -1320,17 +1182,14 @@ async def compile_interview_stories_task(session_id: str):
                 base_url="https://ark.cn-beijing.volces.com/api/v3",
             )
 
-            theme_options = "/".join(THEMES)
-
-            # ========== Layer 1: 提取基本信息 (summary, year, theme) ==========
+            # ========== Layer 1: 提取基本信息 (summary, year) ==========
             try:
                 prompt_layer1 = f"""从以下采访内容中提取故事的基本信息：
 - summary：一句话故事摘要
 - year：故事发生的大致年份（如果没有明确年份，估算一个）
-- theme：从以下主题选择其一：{theme_options}
 
 只返回JSON格式，不要任何其他内容：
-{{"summary": "xxx", "year": 1990, "theme": "工作岁月"}}
+{{"summary": "xxx", "year": 1990}}
 
 采访内容：
 {transcript[:3000]}"""
@@ -1349,7 +1208,6 @@ async def compile_interview_stories_task(session_id: str):
                     layer1_data = json_lib.loads(result_text.strip())
                     story.summary = layer1_data.get("summary", "")[:100]
                     story.year = layer1_data.get("year")
-                    story.theme = layer1_data.get("theme", "其他")
                 except json_lib.JSONDecodeError as e:
                     print(f"解析Layer1失败: {e}")
             except Exception as e:
@@ -1369,7 +1227,6 @@ async def compile_interview_stories_task(session_id: str):
   "summary": "一句话摘要（20字以内）",
   "year": 故事发生年份（整数或null）,
   "decade": "年代描述",
-  "theme": "主题（从现有主题库选）",
   "time_range": "时间范围描述（如1958年冬天）",
   "tags": ["标签1", "标签2"],
   "involved_people": ["提到的人名"],
@@ -1393,7 +1250,6 @@ async def compile_interview_stories_task(session_id: str):
                     story.summary = layer2_data.get("summary", "")[:20] if layer2_data.get("summary") else None
                     story.year = layer2_data.get("year")
                     story.decade = layer2_data.get("decade")
-                    story.theme = layer2_data.get("theme")
                     story.time_range = layer2_data.get("time_range")
                     story.tags = json_lib.dumps(layer2_data.get("tags", [])) if layer2_data.get("tags") else "[]"
                     story.involved_people = json_lib.dumps(layer2_data.get("involved_people", [])) if layer2_data.get("involved_people") else "[]"
@@ -2339,8 +2195,7 @@ def get_unextracted_stories(person_id: str, db: Session = Depends(get_db)):
         {
             "id": s.id,
             "transcript": s.transcript,
-            "year": s.year,
-            "theme": s.theme
+            "year": s.year
         }
         for s in stories
     ]
@@ -2751,7 +2606,6 @@ def create_story_full(story: StoryFullCreate, background_tasks: BackgroundTasks,
         summary=story.summary,
         year=story.year,
         decade=story.decade,
-        theme=story.theme,
     )
     db.add(db_story)
     db.commit()
@@ -2969,7 +2823,6 @@ def read_story(story_id: str, db: Session = Depends(get_db)):
         summary=db_story.summary,
         year=db_story.year,
         decade=db_story.decade,
-        theme=db_story.theme,
         related_history_id=db_story.related_history_id,
         related_history=db_story.related_history,
         created_at=db_story.created_at,
@@ -3038,28 +2891,9 @@ def extract_structured_info(transcript: str, db=None) -> dict:
             "summary": transcript[:20] + "..." if transcript else "",
             "year": None,
             "decade": None,
-            "theme": "其他",
             "persons_mentioned": [],
             "related_history": None
         }
-
-    # 动态获取主题列表
-    theme_options = "其他"
-    try:
-        if db:
-            themes = db.query(models.Theme).order_by(models.Theme.sort_order.asc()).all()
-            theme_options = "/".join([t.name for t in themes])
-        else:
-            from database import SessionLocal
-            db_temp = SessionLocal()
-            try:
-                themes = db_temp.query(models.Theme).order_by(models.Theme.sort_order.asc()).all()
-                theme_options = "/".join([t.name for t in themes])
-            finally:
-                db_temp.close()
-    except Exception as e:
-        print(f"获取主题列表失败: {e}")
-        theme_options = "其他"
 
     # 动态获取历史事件列表
     events_title_list = ""
@@ -3088,7 +2922,6 @@ def extract_structured_info(transcript: str, db=None) -> dict:
   "summary": "一句话摘要，20字以内，要有温度感",
   "year": 故事发生年份整数（不确定则返回null）,
   "decade": "年代描述，如1960年代（不确定则返回null）",
-  "theme": "从以下选一个最合适的：{theme_options}",
   "persons_mentioned": ["故事中提到的人名列表，没有则为空数组"],
   "related_history": "推测该故事与哪个历史事件相关，从以下事件列表中选择最匹配的一个，返回格式如「1997年香港回归」，如果是童年趣事、家庭日常等与宏观历史无关的内容返回null"
 }}故事内容：{transcript}
@@ -3118,7 +2951,6 @@ def extract_structured_info(transcript: str, db=None) -> dict:
                 "summary": result.get("summary", ""),
                 "year": result.get("year"),
                 "decade": result.get("decade"),
-                "theme": result.get("theme", "其他"),
                 "persons_mentioned": result.get("persons_mentioned", []),
                 "related_history": result.get("related_history")
             }
@@ -3128,7 +2960,6 @@ def extract_structured_info(transcript: str, db=None) -> dict:
                 "summary": transcript[:20] + "..." if transcript else "",
                 "year": None,
                 "decade": None,
-                "theme": "其他",
                 "persons_mentioned": [],
                 "related_history": None
             }
@@ -3139,7 +2970,6 @@ def extract_structured_info(transcript: str, db=None) -> dict:
             "summary": transcript[:20] + "..." if transcript else "",
             "year": None,
             "decade": None,
-            "theme": "其他",
             "persons_mentioned": [],
             "related_history": None
         }
@@ -3246,7 +3076,6 @@ def tag_story(story_id: str, request: TagRequest, db: Session = Depends(get_db))
         story.summary = structured.get("summary", "")
         story.year = structured.get("year")
         story.decade = structured.get("decade")
-        story.theme = structured.get("theme", "其他")
         story.person_ids = json_lib.dumps(structured.get("persons_mentioned", []))
 
         # 处理历史事件关联：只当用户没有手动选择时才覆盖
@@ -3285,7 +3114,6 @@ def tag_story(story_id: str, request: TagRequest, db: Session = Depends(get_db))
             "summary": story.summary,
             "year": story.year,
             "decade": story.decade,
-            "theme": story.theme,
             "persons_mentioned": structured.get("persons_mentioned", []),
             "related_history": story.related_history
         }
@@ -3370,7 +3198,6 @@ def retag_story(story_id: str, db: Session = Depends(get_db)):
         story.summary = structured.get("summary", "")
         story.year = structured.get("year")
         story.decade = structured.get("decade")
-        story.theme = structured.get("theme", "其他")
         story.person_ids = json_lib.dumps(structured.get("persons_mentioned", []))
         story.ai_tag_status = "done"
         db.commit()
@@ -3379,7 +3206,6 @@ def retag_story(story_id: str, db: Session = Depends(get_db)):
             "summary": story.summary,
             "year": story.year,
             "decade": story.decade,
-            "theme": story.theme,
             "persons_mentioned": structured.get("persons_mentioned", [])
         }
 
@@ -3398,7 +3224,6 @@ class FamilyTimelineStory(BaseModel):
     summary: Optional[str] = None
     year: Optional[int] = None
     decade: Optional[str] = None
-    theme: Optional[str] = None
     audio_url: Optional[str] = None
     transcript: Optional[str] = None
     related_history_id: Optional[str] = None
@@ -3411,18 +3236,13 @@ class FamilyTimelineStory(BaseModel):
 
 @app.get("/family/timeline", response_model=List[FamilyTimelineStory])
 def read_family_timeline(
-    theme: Optional[str] = None,
     person_id: Optional[str] = None,
     year_from: Optional[int] = None,
     year_to: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    """家族总时间轴 - 查询所有故事，支持主题/人物/年代过滤"""
+    """家族总时间轴 - 查询所有故事，支持人物/年代过滤"""
     query = db.query(models.Story)
-
-    # 按主题过滤
-    if theme:
-        query = query.filter(models.Story.theme == theme)
 
     # 按人物过滤
     if person_id:
@@ -3469,7 +3289,6 @@ def read_family_timeline(
             summary=story.summary,
             year=story.year,
             decade=story.decade,
-            theme=story.theme,
             audio_url=story.audio_url,
             transcript=story.transcript,
             persons=persons
@@ -3594,7 +3413,6 @@ def get_person_stories_in_chapters(person_id: str, db: Session = Depends(get_db)
             "id": s.id,
             "summary": s.summary,
             "year": s.year,
-            "theme": s.theme,
             "chapter_id": story_chapter_map.get(s.id),
         })
 
@@ -3917,7 +3735,6 @@ def get_event_stories(event_id: str, db: Session = Depends(get_db)):
             "transcript": story.transcript,
             "summary": story.summary,
             "year": story.year,
-            "theme": story.theme,
             "persons": persons
         })
 

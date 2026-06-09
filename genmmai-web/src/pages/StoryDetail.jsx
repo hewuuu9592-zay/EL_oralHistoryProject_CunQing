@@ -753,7 +753,7 @@ const StoryDetail = () => {
                 </div>
               )}
 
-              {/* 主题 */}
+              {/* 主题
               {isEditing ? (
                 <div>
                   <label className="block text-xs text-gray-400 uppercase mb-1">主题</label>
@@ -770,7 +770,7 @@ const StoryDetail = () => {
                   <h4 className="text-xs text-gray-400 uppercase mb-1">主题</h4>
                   <p className="text-gray-700">{story.theme}</p>
                 </div>
-              )}
+              )} */}
 
               {/* 核心标签 */}
               {isEditing ? (
