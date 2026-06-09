@@ -3296,6 +3296,96 @@ def tag_story(story_id: str, request: TagRequest, db: Session = Depends(get_db))
         raise HTTPException(status_code=500, detail=f"AI 标注失败：{str(e)}")
 
 
+@app.post("/stories/{story_id}/regenerate-polish")
+def regenerate_polish(story_id: str, db: Session = Depends(get_db)):
+    """重新生成叙事润色版（Layer 3）"""
+    story = db.query(models.Story).filter(models.Story.id == story_id).first()
+    if not story:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    if not story.transcript:
+        raise HTTPException(status_code=400, detail="原始转录为空，无法生成润色版")
+
+    # 调用 OpenAI 重新生成润色版
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    # 获取结构化信息作为上下文
+    layer2_info = ""
+    if story.structured_snippets:
+        try:
+            snippets = json_lib.loads(story.structured_snippets)
+            layer2_info = f"故事概要：{snippets.get('summary', '')}\n关键事件：{', '.join(snippets.get('key_events', []))}\n"
+        except:
+            pass
+
+    prompt_layer3 = f"""以下是一位老人接受采访时的口述记录：
+{story.transcript[:4000]}
+
+{layer2_info}
+请根据以上内容，为这位老人撰写一篇第一人称的自述文章。
+要求：口语化，保留老人的语言风格，像她亲笔写的那样。
+不必严格按时间顺序，让故事自然流淌。
+篇幅200-400字，有温度，有细节，能打动人。
+直接返回文章正文，不要任何前缀。"""
+
+    try:
+        response = client.chat.completions.create(
+            model="ep-20260521233914-gllp4",
+            messages=[{"role": "user", "content": prompt_layer3}],
+            temperature=0.7,
+        )
+
+        story.narrative_polish = response.choices[0].message.content.strip()
+        db.commit()
+
+        return {"narrative_polish": story.narrative_polish}
+
+    except Exception as e:
+        print(f"重新生成润色版失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"重新生成润色版失败：{str(e)}")
+
+
+@app.post("/stories/{story_id}/retag")
+def retag_story(story_id: str, db: Session = Depends(get_db)):
+    """重新生成结构化信息（Tag/Layer 2）"""
+    story = db.query(models.Story).filter(models.Story.id == story_id).first()
+    if not story:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    if not story.transcript:
+        raise HTTPException(status_code=400, detail="原始转录为空，无法重新标注")
+
+    story.ai_tag_status = "processing"
+    db.commit()
+
+    try:
+        # 调用结构化信息提取
+        structured = extract_structured_info(story.transcript, db)
+
+        # 更新数据库
+        story.summary = structured.get("summary", "")
+        story.year = structured.get("year")
+        story.decade = structured.get("decade")
+        story.theme = structured.get("theme", "其他")
+        story.person_ids = json_lib.dumps(structured.get("persons_mentioned", []))
+        story.ai_tag_status = "done"
+        db.commit()
+
+        return {
+            "summary": story.summary,
+            "year": story.year,
+            "decade": story.decade,
+            "theme": story.theme,
+            "persons_mentioned": structured.get("persons_mentioned", [])
+        }
+
+    except Exception as e:
+        print(f"重新标注失败: {str(e)}")
+        story.ai_tag_status = "failed"
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"重新标注失败：{str(e)}")
+
+
 # ============= Family Timeline API =============
 
 class FamilyTimelineStory(BaseModel):

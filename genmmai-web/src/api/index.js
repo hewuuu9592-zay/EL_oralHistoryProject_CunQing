@@ -43,6 +43,12 @@ export const createStoryPerson = (data) => api.post('/story-persons', data);
 
 export const tagStory = (id, transcript) => api.post(`/stories/${id}/tag`, { transcript });
 
+// 重新生成润色版
+export const regeneratePolishing = (id) => api.post(`/stories/${id}/regenerate-polish`);
+
+// 重新生成结构化信息（retag）
+export const retagStory = (id) => api.post(`/stories/${id}/retag`);
+
 // 迁徙记录 API
 export const getPersonMigrations = (id) => api.get(`/persons/${id}/migrations`);
 export const getMigrationsByChapter = (id) => api.get(`/persons/${id}/migrations/by-chapter`);

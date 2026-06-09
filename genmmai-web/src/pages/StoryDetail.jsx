@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getStory, patchStory, getPersons, getStoryGenerationStatus, deleteStory } from '../api';
+import { getStory, patchStory, getPersons, getStoryGenerationStatus, deleteStory, getSessionRounds, regeneratePolishing, retagStory } from '../api';
 
 const StoryDetail = () => {
   const { id } = useParams();
@@ -8,10 +8,8 @@ const StoryDetail = () => {
 
   const [story, setStory] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
   // Tab 切换状态
@@ -20,12 +18,30 @@ const StoryDetail = () => {
   const [generationStatus, setGenerationStatus] = useState(null);
   const pollTimerRef = useRef(null);
 
-  // 编辑表单状态
-  const [editTranscript, setEditTranscript] = useState('');
-  const [editYear, setEditYear] = useState(null);
-  const [editPersonIds, setEditPersonIds] = useState([]);
-  const [allPersons, setAllPersons] = useState([]);
-  const [personsLoading, setPersonsLoading] = useState(false);
+  // 编辑模式状态
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  // Tab1 编辑状态 - narrative_polish
+  const [editNarrativePolish, setEditNarrativePolish] = useState('');
+
+  // Tab2 编辑状态 - 对话记录轮次
+  const [editRounds, setEditRounds] = useState([]);
+  const [roundsLoading, setRoundsLoading] = useState(false);
+
+  // Tab3 编辑状态 - 结构化信息
+  const [editStructured, setEditStructured] = useState({
+    title: '',
+    summary: '',
+    year: '',
+    decade: '',
+    theme: '',
+    tags: '',
+    involved_people: '',
+    key_events: '',
+    time_range: '',
+  });
 
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
@@ -39,6 +55,9 @@ const StoryDetail = () => {
       try {
         const res = await getStory(id);
         setStory(res.data);
+
+        // 初始化编辑状态
+        setEditNarrativePolish(res.data.narrative_polish || '');
 
         // 轮询生成状态（只对pending/生成中状态轮询）
         if (res.data?.generation_status && !['done', 'failed'].includes(res.data.generation_status)) {
@@ -74,45 +93,51 @@ const StoryDetail = () => {
     };
   }, [id]);
 
-  // 打开编辑 Modal
-  const openEditModal = async () => {
+  // 初始化编辑模式
+  useEffect(() => {
     if (!story) return;
 
-    // 初始化表单数据
-    setEditTranscript(story.transcript || '');
-    setEditYear(story.year || null);
-    setEditPersonIds(story.persons?.map(p => p.id) || []);
-
-    // 获取家族成员列表
-    setPersonsLoading(true);
-    try {
-      const res = await getPersons();
-      setAllPersons(res.data || []);
-    } catch (err) {
-      console.error('获取人物列表失败:', err);
-    } finally {
-      setPersonsLoading(false);
+    if (activeTab === 'story') {
+      setEditNarrativePolish(story.narrative_polish || '');
+    } else if (activeTab === 'transcript' && story.source_session_id) {
+      loadRounds();
+    } else if (activeTab === 'structured') {
+      setEditStructured({
+        title: story.title || '',
+        summary: story.summary || '',
+        year: story.year || '',
+        decade: story.decade || '',
+        theme: story.theme || '',
+        tags: story.tags || '[]',
+        involved_people: story.involved_people || '[]',
+        key_events: story.key_events || '[]',
+        time_range: story.time_range || '',
+      });
     }
+  }, [story, activeTab, isEditing]);
 
-    setIsModalOpen(true);
-    setError(null);
+  // 加载对话轮次
+  const loadRounds = async () => {
+    if (!story?.source_session_id) return;
+    setRoundsLoading(true);
+    try {
+      const res = await getSessionRounds(story.source_session_id);
+      setEditRounds(res.data || []);
+    } catch (err) {
+      console.error('加载对话轮次失败:', err);
+    } finally {
+      setRoundsLoading(false);
+    }
   };
 
-  // 关闭 Modal
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setError(null);
-  };
-
-  // 切换人物选择
-  const togglePerson = (personId) => {
-    if (editPersonIds.includes(personId)) {
-      // 至少保留一个人物
-      if (editPersonIds.length > 1) {
-        setEditPersonIds(editPersonIds.filter(id => id !== personId));
-      }
+  // 切换编辑模式
+  const toggleEdit = () => {
+    if (isEditing) {
+      // 取消编辑，回复原始数据
+      setIsEditing(false);
     } else {
-      setEditPersonIds([...editPersonIds, personId]);
+      // 进入编辑模式
+      setIsEditing(true);
     }
   };
 
@@ -122,32 +147,84 @@ const StoryDetail = () => {
     setError(null);
 
     try {
-      // 构造更新数据
-      const updateData = {};
-
-      if (editTranscript !== story.transcript) {
-        updateData.transcript = editTranscript;
+      if (activeTab === 'story') {
+        // Tab1: 保存 narrative_polish
+        await patchStory(id, { narrative_polish: editNarrativePolish });
+      } else if (activeTab === 'transcript' && story?.source_session_id) {
+        // Tab2: 保存对话轮次
+        await patchStory(id, { transcript: editRounds.map(r => r.transcript).join('\n\n') });
+      } else if (activeTab === 'structured') {
+        // Tab3: 保存结构化信息
+        await patchStory(id, {
+          title: editStructured.title || null,
+          summary: editStructured.summary || null,
+          year: editStructured.year ? parseInt(editStructured.year) : null,
+          decade: editStructured.decade || null,
+          theme: editStructured.theme || null,
+          tags: editStructured.tags,
+          involved_people: editStructured.involved_people,
+          key_events: editStructured.key_events,
+          time_range: editStructured.time_range || null,
+        });
       }
-      if (editYear !== story.year) {
-        updateData.year = editYear;
-      }
-      if (editPersonIds.length > 0) {
-        updateData.person_ids = editPersonIds;
-      }
-
-      // 调用 API 更新
-      await patchStory(id, updateData);
 
       // 刷新故事数据
       const res = await getStory(id);
       setStory(res.data);
-
-      closeModal();
+      setIsEditing(false);
     } catch (err) {
       console.error('保存失败:', err);
       setError(err.response?.data?.detail || '保存失败，请重试');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // 重新生成润色版
+  const handleRegeneratePolish = async () => {
+    setRegenerating(true);
+    setError(null);
+
+    try {
+      const res = await regeneratePolishing(id);
+      setEditNarrativePolish(res.data.narrative_polish);
+      // 刷新故事数据
+      const storyRes = await getStory(id);
+      setStory(storyRes.data);
+    } catch (err) {
+      console.error('重新生成失败:', err);
+      setError(err.response?.data?.detail || '重新生成失败，请重试');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  // 重新生成结构化信息
+  const handleRetag = async () => {
+    setRegenerating(true);
+    setError(null);
+
+    try {
+      await retagStory(id);
+      // 刷新故事数据
+      const res = await getStory(id);
+      setStory(res.data);
+      setEditStructured({
+        title: res.data.title || '',
+        summary: res.data.summary || '',
+        year: res.data.year || '',
+        decade: res.data.decade || '',
+        theme: res.data.theme || '',
+        tags: res.data.tags || '[]',
+        involved_people: res.data.involved_people || '[]',
+        key_events: res.data.key_events || '[]',
+        time_range: res.data.time_range || '',
+      });
+    } catch (err) {
+      console.error('重新生成失败:', err);
+      setError(err.response?.data?.detail || '重新生成失败，请重试');
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -213,6 +290,39 @@ const StoryDetail = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // 渲染编辑/保存/取消按钮
+  const renderTopRightButtons = () => {
+    if (isEditing) {
+      return (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738] disabled:opacity-50 text-sm"
+          >
+            {saving ? '保存中...' : '保存'}
+          </button>
+          <button
+            onClick={toggleEdit}
+            disabled={saving}
+            className="px-4 py-2 text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 text-sm disabled:opacity-50"
+          >
+            取消
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <button
+        onClick={toggleEdit}
+        className="px-4 py-2 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738] text-sm"
+      >
+        编辑
+      </button>
+    );
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#FAF7F2] flex items-center justify-center">
@@ -228,8 +338,6 @@ const StoryDetail = () => {
       </div>
     );
   }
-
-  // const themeInfo = getThemeInfo(story.theme);
 
   return (
     <div className="min-h-screen bg-[#FAF7F2] flex flex-col">
@@ -259,43 +367,39 @@ const StoryDetail = () => {
             <span className="text-3xl font-serif text-[#D4A574]">
               {story.year} 年
             </span>
-          )}
+            )}
 
-          {story.decade && (
-            <span className="px-3 py-1 rounded-full text-sm shadow-sm bg-gray-100 text-gray-600">
-              {story.decade}
-            </span>
-          )}
+            {story.decade && (
+              <span className="px-3 py-1 rounded-full text-sm shadow-sm bg-gray-100 text-gray-600">
+                {story.decade}
+              </span>
+            )}
 
-          {/* 关联历史事件标签 */}
-          {story.related_history && (
+            {/* 关联历史事件标签 */}
+            {story.related_history && (
+              <button
+                onClick={() => navigate(`/?highlight_event=${story.related_history_id}`)}
+                className="px-3 py-1 rounded-full text-sm bg-[#EEF2F7] text-[#4A3728] hover:underline"
+              >
+                📜 {story.related_history}
+              </button>
+            )}
+          </div>
+
+          {/* 右侧按钮组 */}
+          <div className="flex items-center gap-2">
+            {/* 编辑/保存/取消按钮 */}
+            {renderTopRightButtons()}
+
+            {/* 删除按钮 */}
             <button
-              onClick={() => navigate(`/?highlight_event=${story.related_history_id}`)}
-              className="px-3 py-1 rounded-full text-sm bg-[#EEF2F7] text-[#4A3728] hover:underline"
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm hover:shadow text-red-500"
             >
-              📜 {story.related_history}
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
             </button>
-          )}
-
-          {/* 删除按钮 */}
-          <button
-            onClick={() => setIsDeleteModalOpen(true)}
-            className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm hover:shadow text-red-500"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
-
-          {/* 编辑按钮 */}
-          <button
-            onClick={openEditModal}
-            className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm hover:shadow"
-          >
-            <svg className="w-5 h-5 text-[#D4A574]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a3 3 0 114.243 4.243m-4.836 6.428l4.836 6.428m0 0a3 3 0 105.648-5.648l-3.536 3.536m0 0l3.536-3.536m-3.536 3.536L9.464 5.232" />
-            </svg>
-          </button>
           </div>
         </div>
 
@@ -398,23 +502,41 @@ const StoryDetail = () => {
                 <div className="mb-4 text-sm text-red-500">故事生成失败</div>
               )}
 
-              {/* 切换：润色版/原始转录 */}
-              <div className="flex justify-end mb-3">
+              {/* 切换：润色版/原始转录 + 重新生成按钮 */}
+              <div className="flex justify-between items-center mb-3">
                 <button
                   onClick={() => setShowPolished(!showPolished)}
                   className="text-xs text-gray-400 hover:text-gray-600"
                 >
                   {showPolished ? '查看原始转录' : '查看润色版'}
                 </button>
+                {isEditing && (
+                  <button
+                    onClick={handleRegeneratePolish}
+                    disabled={regenerating}
+                    className="px-3 py-1 text-xs bg-[#D4A574] text-white rounded-lg hover:bg-[#C49564] disabled:opacity-50"
+                  >
+                    {regenerating ? '生成中...' : '重新生成润色版'}
+                  </button>
+                )}
               </div>
 
               {/* 内容 */}
-              {(showPolished ? story.narrative_polish : story.transcript) ? (
-                <p className="font-serif text-[#4A3728] text-lg leading-[1.8] whitespace-pre-wrap">
-                  {showPolished ? story.narrative_polish : story.transcript}
-                </p>
+              {isEditing ? (
+                <textarea
+                  value={editNarrativePolish}
+                  onChange={(e) => setEditNarrativePolish(e.target.value)}
+                  className="w-full h-60 p-3 border border-[#E5DED3] rounded-lg resize-none focus:outline-none focus:border-[#D4A574] font-serif text-[#4A3728] text-lg leading-[1.8]"
+                  placeholder="请输入润色后的故事..."
+                />
               ) : (
-                <p className="text-gray-400 text-center py-8">故事生成中...</p>
+                ((showPolished ? story.narrative_polish : story.transcript) ? (
+                  <p className="font-serif text-[#4A3728] text-lg leading-[1.8] whitespace-pre-wrap">
+                    {showPolished ? story.narrative_polish : story.transcript}
+                  </p>
+                ) : (
+                  <p className="text-gray-400 text-center py-8">故事生成中...</p>
+                ))
               )}
             </div>
           )}
@@ -430,49 +552,59 @@ const StoryDetail = () => {
               ) : (
                 /* 按\n\n拆分，再分别提取【问】和【答-第X轮】 */
                 <div className="space-y-4">
-                  {(() => {
-                    const rounds = story.transcript
-                      ?.split('\n\n')
-                      .filter(block => block.trim())
-                      .map(block => {
-                        const lines = block.split('\n');
-                        const questionLine = lines.find(l => l.startsWith('【问】'));
-                        const answerLine = lines.find(l => l.includes('【答-第'));
-                        const roundMatch = answerLine?.match(/【答-第(\d+)轮】(.*)/);
-                        return {
-                          roundNum: roundMatch?.[1] || '',
-                          question: questionLine?.replace('【问】', '').trim() || '',
-                          answer: roundMatch?.[2]?.trim() || ''
-                        };
-                      })
-                      .filter(r => r.answer) || [];
-
-                    return rounds.map((r, i) => (
-                      <div key={i} className="pb-4 border-b border-gray-100 last:border-0">
-                        {r.roundNum && (
-                          <div className="text-xs text-gray-400 mb-2">第 {r.roundNum} 轮</div>
+                  {roundsLoading ? (
+                    <p className="text-gray-400 text-center py-8">加载中...</p>
+                  ) : (
+                    editRounds.map((round, i) => (
+                      <div key={round.id || i} className="pb-4 border-b border-gray-100 last:border-0">
+                        {round.round_index !== undefined && (
+                          <div className="text-xs text-gray-400 mb-2">第 {round.round_index + 1} 轮</div>
                         )}
 
                         {/* AI 问题气泡（左侧，灰色） */}
-                        {r.question && (
+                        {round.question && (
                           <div className="flex justify-start mb-3">
                             <div className="bg-gray-100 rounded-2xl px-4 py-2 max-w-[80%]">
-                              <p className="text-sm text-gray-700">{r.question}</p>
+                              <p className="text-sm text-gray-700">{round.question}</p>
                             </div>
                           </div>
                         )}
 
                         {/* 老人回答区（右侧，暖色） */}
-                        {r.answer && (
+                        {isEditing ? (
+                          <div className="flex justify-end">
+                            <textarea
+                              value={round.transcript || ''}
+                              onChange={(e) => {
+                                const newRounds = [...editRounds];
+                                newRounds[i].transcript = e.target.value;
+                                setEditRounds(newRounds);
+                              }}
+                              className="w-full max-w-[80%] px-4 py-2 border border-[#E5DED3] rounded-2xl resize-none focus:outline-none focus:border-[#D4A574] text-sm text-gray-700"
+                              rows={3}
+                            />
+                          </div>
+                        ) : (
                           <div className="flex justify-end">
                             <div className="bg-[#FFF8EE] rounded-2xl px-4 py-2 max-w-[80%]">
-                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.answer}</p>
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{round.transcript}</p>
                             </div>
                           </div>
                         )}
+
+                        {/* 音频播放器（如果有） */}
+                        {round.audio_url && (
+                          <div className="mt-2">
+                            <audio
+                              src={round.audio_url}
+                              controls
+                              className="w-full h-8"
+                            />
+                          </div>
+                        )}
                       </div>
-                    ));
-                  })()}
+                    ))
+                  )}
                   {!story.transcript && (
                     <p className="text-gray-400 text-center py-8">暂无对话记录</p>
                   )}
@@ -484,21 +616,153 @@ const StoryDetail = () => {
           {/* Tab3: 结构化信息（第二层） */}
           {activeTab === 'structured' && (
             <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
+              {/* 右上角重新生成按钮 */}
+              {isEditing && (
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleRetag}
+                    disabled={regenerating}
+                    className="px-3 py-1 text-xs bg-[#D4A574] text-white rounded-lg hover:bg-[#C49564] disabled:opacity-50"
+                  >
+                    {regenerating ? '生成中...' : '重新生成结构化信息'}
+                  </button>
+                </div>
+              )}
+
               {/* 生成中状态 */}
               {(!generationStatus || (generationStatus.status !== 'done' && generationStatus.status !== 'failed')) && !story.title && !story.summary && (
                 <p className="text-gray-400 text-center py-8">结构化信息生成中...</p>
               )}
 
+              {/* 标题 */}
+              {isEditing ? (
+                <div>
+                  <label className="block text-xs text-gray-400 uppercase mb-1">标题</label>
+                  <input
+                    type="text"
+                    value={editStructured.title}
+                    onChange={(e) => setEditStructured({ ...editStructured, title: e.target.value })}
+                    className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                    placeholder="故事标题"
+                  />
+                </div>
+              ) : story.title && (
+                <div>
+                  <h3 className="text-xl font-serif text-[#4A3728]">{story.title}</h3>
+                </div>
+              )}
+
+              {/* 摘要 */}
+              {isEditing ? (
+                <div>
+                  <label className="block text-xs text-gray-400 uppercase mb-1">故事概要</label>
+                  <textarea
+                    value={editStructured.summary}
+                    onChange={(e) => setEditStructured({ ...editStructured, summary: e.target.value })}
+                    className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728] text-sm"
+                    rows={3}
+                    placeholder="故事概要"
+                  />
+                </div>
+              ) : story.summary && (
+                <div>
+                  <h4 className="text-xs text-gray-400 uppercase mb-1">故事概要</h4>
+                  <p className="text-gray-700">{story.summary}</p>
+                </div>
+              )}
+
               {/* 时间范围 */}
-              {story.time_range && (
+              {isEditing ? (
+                <div>
+                  <label className="block text-xs text-gray-400 uppercase mb-1">时间范围</label>
+                  <input
+                    type="text"
+                    value={editStructured.time_range}
+                    onChange={(e) => setEditStructured({ ...editStructured, time_range: e.target.value })}
+                    className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                    placeholder="例如: 1960-1970年"
+                  />
+                </div>
+              ) : story.time_range && (
                 <div>
                   <h4 className="text-xs text-gray-400 uppercase mb-1">时间范围</h4>
                   <p className="text-gray-700">{story.time_range}</p>
                 </div>
               )}
 
+              {/* 年份 */}
+              {isEditing ? (
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-400 uppercase mb-1">年份</label>
+                    <input
+                      type="number"
+                      value={editStructured.year}
+                      onChange={(e) => setEditStructured({ ...editStructured, year: e.target.value })}
+                      className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                      placeholder="故事发生在哪一年"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-400 uppercase mb-1">年代</label>
+                    <input
+                      type="text"
+                      value={editStructured.decade}
+                      onChange={(e) => setEditStructured({ ...editStructured, decade: e.target.value })}
+                      className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                      placeholder="例如: 1960年代"
+                    />
+                  </div>
+                </div>
+              ) : (story.year || story.decade) && (
+                <div className="flex gap-4">
+                  {story.year && (
+                    <div>
+                      <h4 className="text-xs text-gray-400 uppercase mb-1">年份</h4>
+                      <p className="text-gray-700">{story.year}</p>
+                    </div>
+                  )}
+                  {story.decade && (
+                    <div>
+                      <h4 className="text-xs text-gray-400 uppercase mb-1">年代</h4>
+                      <p className="text-gray-700">{story.decade}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 主题 */}
+              {isEditing ? (
+                <div>
+                  <label className="block text-xs text-gray-400 uppercase mb-1">主题</label>
+                  <input
+                    type="text"
+                    value={editStructured.theme}
+                    onChange={(e) => setEditStructured({ ...editStructured, theme: e.target.value })}
+                    className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                    placeholder="故事主题"
+                  />
+                </div>
+              ) : story.theme && (
+                <div>
+                  <h4 className="text-xs text-gray-400 uppercase mb-1">主题</h4>
+                  <p className="text-gray-700">{story.theme}</p>
+                </div>
+              )}
+
               {/* 核心标签 */}
-              {story.tags && (
+              {isEditing ? (
+                <div>
+                  <label className="block text-xs text-gray-400 uppercase mb-1">核心标签 (JSON 数组)</label>
+                  <input
+                    type="text"
+                    value={editStructured.tags}
+                    onChange={(e) => setEditStructured({ ...editStructured, tags: e.target.value })}
+                    className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                    placeholder='["标签1", "标签2"]'
+                  />
+                </div>
+              ) : story.tags && (
                 <div>
                   <h4 className="text-xs text-gray-400 uppercase mb-1">核心标签</h4>
                   <div className="flex flex-wrap gap-2">
@@ -512,7 +776,18 @@ const StoryDetail = () => {
               )}
 
               {/* 涉及人物 */}
-              {story.involved_people && (
+              {isEditing ? (
+                <div>
+                  <label className="block text-xs text-gray-400 uppercase mb-1">涉及人物 (JSON 数组)</label>
+                  <input
+                    type="text"
+                    value={editStructured.involved_people}
+                    onChange={(e) => setEditStructured({ ...editStructured, involved_people: e.target.value })}
+                    className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                    placeholder='["人物1", "人物2"]'
+                  />
+                </div>
+              ) : story.involved_people && (
                 <div>
                   <h4 className="text-xs text-gray-400 uppercase mb-1">涉及人物</h4>
                   <div className="flex flex-wrap gap-2">
@@ -526,7 +801,18 @@ const StoryDetail = () => {
               )}
 
               {/* 核心事件 */}
-              {story.key_events && (
+              {isEditing ? (
+                <div>
+                  <label className="block text-xs text-gray-400 uppercase mb-1">核心事件 (JSON 数组)</label>
+                  <input
+                    type="text"
+                    value={editStructured.key_events}
+                    onChange={(e) => setEditStructured({ ...editStructured, key_events: e.target.value })}
+                    className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                    placeholder='["事件1", "事件2"]'
+                  />
+                </div>
+              ) : story.key_events && (
                 <div>
                   <h4 className="text-xs text-gray-400 uppercase mb-1">核心事件</h4>
                   <ol className="space-y-1 list-decimal list-inside">
@@ -556,6 +842,13 @@ const StoryDetail = () => {
             </div>
           )}
         </div>
+
+        {/* 错误提示 */}
+        {error && (
+          <div className="mb-4 text-red-500 text-sm text-center py-2 bg-red-50 rounded-lg">
+            {error}
+          </div>
+        )}
 
         {/* 涉及人物 */}
         {story.persons && story.persons.length > 0 && (
@@ -593,121 +886,6 @@ const StoryDetail = () => {
           )}
         </div>
       </div>
-
-      {/* 编辑 Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-            {/* Modal 头部 */}
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-xl font-serif text-[#4A3728]">编辑故事</h2>
-              <button
-                onClick={closeModal}
-                className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center"
-              >
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Modal 内容 */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              {/* 故事内容 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-2">故事内容</label>
-                <textarea
-                  value={editTranscript}
-                  onChange={(e) => setEditTranscript(e.target.value)}
-                  className="w-full h-40 p-3 border border-[#E5DED3] rounded-lg resize-none focus:outline-none focus:border-[#D4A574] font-serif text-[#4A3728] text-base leading-relaxed"
-                  placeholder="请输入故事内容..."
-                />
-              </div>
-
-              {/* 年份标注 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-2">年份标注</label>
-                <input
-                  type="number"
-                  value={editYear || ''}
-                  onChange={(e) => setEditYear(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
-                  placeholder="故事发生在哪一年"
-                />
-              </div>
-
-              {/* 关联人物 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-2">
-                  关联人物
-                  <span className="text-xs text-gray-400 ml-1">(至少选择一个)</span>
-                </label>
-                {personsLoading ? (
-                  <div className="text-gray-400 text-sm">加载中...</div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {allPersons.map((person) => {
-                      const isSelected = editPersonIds.includes(person.id);
-                      return (
-                        <button
-                          key={person.id}
-                          onClick={() => togglePerson(person.id)}
-                          className={`flex items-center gap-2 px-2 py-1.5 rounded-full text-sm transition-all ${
-                            isSelected
-                              ? 'bg-[#4A3728] text-white'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}
-                        >
-                          {person.avatar_url ? (
-                            <img
-                              src={person.avatar_url}
-                              alt={person.name}
-                              className="w-6 h-6 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div
-                              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                                isSelected ? 'bg-white/20 text-white' : 'bg-[#D4A574] text-white'
-                              }`}
-                            >
-                              {person.name?.charAt(0) || '?'}
-                            </div>
-                          )}
-                          <span>{person.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* 错误提示 */}
-              {error && (
-                <div className="text-red-500 text-sm text-center py-2 bg-red-50 rounded-lg">
-                  {error}
-                </div>
-              )}
-            </div>
-
-            {/* Modal 底部按钮 */}
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
-              <button
-                onClick={closeModal}
-                className="px-5 py-2 text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="px-5 py-2 bg-[#4A3728] text-white rounded-lg hover:bg-[#5A4738] disabled:opacity-50 transition-colors"
-              >
-                {saving ? '保存中...' : '保存'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 删除确认 Modal */}
       {isDeleteModalOpen && (
