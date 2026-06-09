@@ -250,6 +250,7 @@ class StoryFullCreate(BaseModel):
 class StoryUpdate(BaseModel):
     """更新故事"""
     transcript: Optional[str] = None
+    narrative_polish: Optional[str] = None
     year: Optional[int] = None
     theme: Optional[str] = None
     person_ids: Optional[List[str]] = None

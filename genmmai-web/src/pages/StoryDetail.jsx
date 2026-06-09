@@ -505,7 +505,18 @@ const StoryDetail = () => {
               {/* 切换：润色版/原始转录 + 重新生成按钮 */}
               <div className="flex justify-between items-center mb-3">
                 <button
-                  onClick={() => setShowPolished(!showPolished)}
+                  onClick={() => {
+                    const newShowPolished = !showPolished;
+                    setShowPolished(newShowPolished);
+                    // 同步更新编辑框内容
+                    if (isEditing) {
+                      if (newShowPolished) {
+                        setEditNarrativePolish(story.narrative_polish || '');
+                      } else {
+                        setEditNarrativePolish(story.transcript || '');
+                      }
+                    }
+                  }}
                   className="text-xs text-gray-400 hover:text-gray-600"
                 >
                   {showPolished ? '查看原始转录' : '查看润色版'}
