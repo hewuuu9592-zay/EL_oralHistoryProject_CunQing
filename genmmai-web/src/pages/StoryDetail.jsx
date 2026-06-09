@@ -99,7 +99,7 @@ const StoryDetail = () => {
 
     if (activeTab === 'story') {
       setEditNarrativePolish(story.narrative_polish || '');
-    } else if (activeTab === 'transcript' && story.source_session_id) {
+    } else if (activeTab === 'transcript') {
       loadRounds();
     } else if (activeTab === 'structured') {
       setEditStructured({
@@ -118,11 +118,24 @@ const StoryDetail = () => {
 
   // 加载对话轮次
   const loadRounds = async () => {
-    if (!story?.source_session_id) return;
     setRoundsLoading(true);
     try {
-      const res = await getSessionRounds(story.source_session_id);
-      setEditRounds(res.data || []);
+      let rounds = [];
+      if (story?.source_session_id) {
+        // 有采访会话，从API加载
+        const res = await getSessionRounds(story.source_session_id);
+        rounds = res.data || [];
+      } else if (story?.transcript) {
+        // 无采访会话，从 transcript 字段解析
+        const blocks = story.transcript.split('\n\n').filter(b => b.trim());
+        rounds = blocks.map((transcript, i) => ({
+          id: `manual-${i}`,
+          round_index: i,
+          transcript,
+          question: '',
+        }));
+      }
+      setEditRounds(rounds);
     } catch (err) {
       console.error('加载对话轮次失败:', err);
     } finally {
@@ -159,7 +172,7 @@ const StoryDetail = () => {
         // 立即刷新
         const res = await getStory(id);
         setStory(res.data);
-      } else if (activeTab === 'transcript' && story?.source_session_id) {
+      } else if (activeTab === 'transcript') {
         // Tab2: 保存对话轮次
         await patchStory(id, { transcript: editRounds.map(r => r.transcript).join('\n\n') });
         // 立即刷新
@@ -566,72 +579,64 @@ const StoryDetail = () => {
           {/* Tab2: 对话记录（第一层） */}
           {activeTab === 'transcript' && (
             <div className="bg-white rounded-2xl p-4 shadow-sm">
-              {/* 非采访录入的故事 */}
-              {!story.source_session_id ? (
-                <p className="font-serif text-[#4A3728] text-base leading-relaxed whitespace-pre-wrap">
-                  {story.transcript || '暂无对话记录'}
-                </p>
-              ) : (
-                /* 按\n\n拆分，再分别提取【问】和【答-第X轮】 */
-                <div className="space-y-4">
-                  {roundsLoading ? (
-                    <p className="text-gray-400 text-center py-8">加载中...</p>
-                  ) : (
-                    editRounds.map((round, i) => (
-                      <div key={round.id || i} className="pb-4 border-b border-gray-100 last:border-0">
-                        {round.round_index !== undefined && (
-                          <div className="text-xs text-gray-400 mb-2">第 {round.round_index + 1} 轮</div>
-                        )}
+              {/* 按\n\n拆分，再分别提取【问】和【答-第X轮】 */}
+              <div className="space-y-4">
+                {roundsLoading ? (
+                  <p className="text-gray-400 text-center py-8">加载中...</p>
+                ) : editRounds.length === 0 ? (
+                  <p className="text-gray-400 text-center py-8">暂无对话记录</p>
+                ) : (
+                  editRounds.map((round, i) => (
+                    <div key={round.id || i} className="pb-4 border-b border-gray-100 last:border-0">
+                      {round.round_index !== undefined && (
+                        <div className="text-xs text-gray-400 mb-2">第 {round.round_index + 1} 轮</div>
+                      )}
 
-                        {/* AI 问题气泡（左侧，灰色） */}
-                        {round.question && (
-                          <div className="flex justify-start mb-3">
-                            <div className="bg-gray-100 rounded-2xl px-4 py-2 max-w-[80%]">
-                              <p className="text-sm text-gray-700">{round.question}</p>
-                            </div>
+                      {/* AI 问题气泡（左侧，灰色） */}
+                      {round.question && (
+                        <div className="flex justify-start mb-3">
+                          <div className="bg-gray-100 rounded-2xl px-4 py-2 max-w-[80%]">
+                            <p className="text-sm text-gray-700">{round.question}</p>
                           </div>
-                        )}
+                        </div>
+                      )}
 
-                        {/* 老人回答区（右侧，暖色） */}
-                        {isEditing ? (
-                          <div className="flex justify-end">
-                            <textarea
-                              value={round.transcript || ''}
-                              onChange={(e) => {
-                                const newRounds = [...editRounds];
-                                newRounds[i].transcript = e.target.value;
-                                setEditRounds(newRounds);
-                              }}
-                              className="w-full max-w-[80%] px-4 py-2 border border-[#E5DED3] rounded-2xl resize-none focus:outline-none focus:border-[#D4A574] text-sm text-gray-700"
-                              rows={3}
-                            />
+                      {/* 老人回答区（右侧，暖色） */}
+                      {isEditing ? (
+                        <div className="flex justify-end">
+                          <textarea
+                            value={round.transcript || ''}
+                            onChange={(e) => {
+                              const newRounds = [...editRounds];
+                              newRounds[i].transcript = e.target.value;
+                              setEditRounds(newRounds);
+                            }}
+                            className="w-full max-w-[80%] px-4 py-2 border border-[#E5DED3] rounded-2xl resize-none focus:outline-none focus:border-[#D4A574] text-sm text-gray-700"
+                            rows={3}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex justify-end">
+                          <div className="bg-[#FFF8EE] rounded-2xl px-4 py-2 max-w-[80%]">
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{round.transcript}</p>
                           </div>
-                        ) : (
-                          <div className="flex justify-end">
-                            <div className="bg-[#FFF8EE] rounded-2xl px-4 py-2 max-w-[80%]">
-                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{round.transcript}</p>
-                            </div>
-                          </div>
-                        )}
+                        </div>
+                      )}
 
-                        {/* 音频播放器（如果有） */}
-                        {round.audio_url && (
-                          <div className="mt-2">
-                            <audio
-                              src={round.audio_url}
-                              controls
-                              className="w-full h-8"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                  {!story.transcript && (
-                    <p className="text-gray-400 text-center py-8">暂无对话记录</p>
-                  )}
-                </div>
-              )}
+                      {/* 音频播放器（如果有） */}
+                      {round.audio_url && (
+                        <div className="mt-2">
+                          <audio
+                            src={round.audio_url}
+                            controls
+                            className="w-full h-8"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
 
