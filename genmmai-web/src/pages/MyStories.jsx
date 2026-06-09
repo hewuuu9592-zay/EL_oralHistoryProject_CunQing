@@ -103,17 +103,14 @@ const MyStories = ({ personId }) => {
                 <div className="flex-1">
                   <h3 className="font-bold text-[#5C3D2E]">{chapter.title}</h3>
                   <div className="flex items-center gap-2 mt-1">
-                    {chapter.status === 'completed' && (
-                      <span className="text-xs text-green-600">
-                        已完成 · {chapter.stories_count || stories.length}个故事
-                      </span>
-                    )}
-                    {chapter.status === 'not_started' && (
-                      <span className="text-xs text-gray-400">未开始</span>
-                    )}
-                    {chapter.status === 'in_progress' && (
-                      <span className="text-xs text-orange-500">进行中</span>
-                    )}
+                  {chapter.status === 'completed' && (chapter.stories_count || stories.length) > 0 && (
+                    <span className="text-xs text-green-600">
+                      已完成 · {chapter.stories_count || stories.length}个故事
+                    </span>
+                  )}
+                  {!(chapter.status === 'completed' && (chapter.stories_count || stories.length) > 0) && (
+                    <span className="text-xs text-gray-400">未完成</span>
+                  )}
                   </div>
                 </div>
 
