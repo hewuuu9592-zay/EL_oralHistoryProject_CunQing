@@ -185,7 +185,7 @@ const AddMigrationModal = ({ migration, onSave, onCancel }) => {
     setForm({ ...form, place_name: value })
     if (searchTimeout) clearTimeout(searchTimeout)
     if (value.length >= 2) {
-      const timeout = setTimeout(() => searchPlace(value), 300)
+      const timeout = setTimeout(() => searchPlace(value), 150)
       setSearchTimeout(timeout)
     } else {
       setSearchResults([])
