@@ -740,7 +740,7 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
     question = None
     topic_hint = None
 
-    # 如果有 chapter_id，使用章节预设问题
+    # 如果有 chapter_id，使用章节预设问题（根据已完成轮次渐进）
     if chapter_id:
         chapter = db.query(models.AutobiographyChapter).filter(
             models.AutobiographyChapter.id == chapter_id
@@ -750,13 +750,56 @@ def start_interview(person_id: str, request: dict = {}, db: Session = Depends(ge
 
         # 读取章节的 opening_questions
         opening_questions = json.loads(chapter.opening_questions) if chapter.opening_questions else []
-        print(f"chapter found: {chapter.title}, opening_questions: {opening_questions}")  # 加这行
-        if opening_questions:
-            question = opening_questions[0]
-        else:
-            question = f"{person.name}给我们讲讲{chapter.title}的故事吧？"
 
-        topic_hint = chapter.title
+        # 查询该人物在该章节下所有已完成的有效采访 session
+        completed_sessions = db.query(models.InterviewSession).filter(
+            models.InterviewSession.person_id == person_id,
+            models.InterviewSession.chapter_id == chapter_id,
+            models.InterviewSession.status == "completed",
+            models.InterviewSession.round_count > 0
+        ).all()
+
+        # 查询后打印结果
+        print(f"查询到 {len(completed_sessions)} 条记录")
+        print(os.getenv("ARK_API_KEY"))
+
+        session_count = len(completed_sessions)
+
+        # # 统计已完成轮次总数
+        # completed_rounds = sum(s.round_count for s in completed_sessions)
+        # print(f"chapter: {chapter.title}, completed_rounds: {completed_rounds}, opening_questions length: {len(opening_questions)}")
+
+        # 根据已完成轮次决定问题
+        if opening_questions and session_count < len(opening_questions):
+            # 使用预设问题，index = 已完成轮次
+            question = opening_questions[session_count]
+        else:
+            # 预设问题用完了，回退到 AI 动态生成
+            topic_hint = chapter.title
+            api_key = os.getenv("ARK_API_KEY", "")
+            if api_key:
+                client = OpenAI(api_key=api_key)
+                system_prompt = f"你是一位亲切的采访者，正在与{person.name}进行关于{chapter.title}的深度访谈。"
+                user_prompt = f"请为这次采访生成第一个开放式问题，用于引导{person.name}分享{chapter.title}相关的故事和经历。请只返回一个中文问题，不要有其他文字。"
+                try:
+                    resp = client.chat.completions.create(
+                        model="claude-sonnet-4-20250514",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        max_tokens=200,
+                        temperature=0.7
+                    )
+                    question = resp.choices[0].message.content.strip()
+                except Exception as e:
+                    print(f"AI生成问题失败: {e}")
+                    question = f"{person.name}给我们讲讲{chapter.title}的故事吧？"
+            else:
+                question = f"{person.name}给我们讲讲{chapter.title}的故事吧？"
+
+        if not topic_hint:
+            topic_hint = chapter.title
     else:
         # 原有逻辑：AI生成第一问
         # 获取用户偏好的主题
