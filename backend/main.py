@@ -3511,326 +3511,326 @@ def get_person_stories_in_chapters(person_id: str, db: Session = Depends(get_db)
     return result
 
 
-# ============= Historical Events API =============
+# # ============= Historical Events API =============
 
-@app.get("/historical-events", response_model=List[HistoricalEventResponse])
-def read_historical_events(
-    year_from: Optional[int] = None,
-    year_to: Optional[int] = None,
-    db: Session = Depends(get_db)
-):
-    """获取历史事件列表，支持按年份过滤"""
-    query = db.query(models.HistoricalEvent)
+# @app.get("/historical-events", response_model=List[HistoricalEventResponse])
+# def read_historical_events(
+#     year_from: Optional[int] = None,
+#     year_to: Optional[int] = None,
+#     db: Session = Depends(get_db)
+# ):
+#     """获取历史事件列表，支持按年份过滤"""
+#     query = db.query(models.HistoricalEvent)
 
-    if year_from is not None:
-        query = query.filter(models.HistoricalEvent.year >= year_from)
-    if year_to is not None:
-        query = query.filter(models.HistoricalEvent.year <= year_to)
+#     if year_from is not None:
+#         query = query.filter(models.HistoricalEvent.year >= year_from)
+#     if year_to is not None:
+#         query = query.filter(models.HistoricalEvent.year <= year_to)
 
-    return query.order_by(models.HistoricalEvent.year.asc()).all()
-
-
-@app.post("/historical-events/custom", response_model=HistoricalEventResponse)
-def create_custom_event(
-    request: HistoricalEventUpdate,
-    linked_stories: CustomEventStoryLink = None,
-    background_tasks: BackgroundTasks = None,
-    db: Session = Depends(get_db)
-):
-    """创建自定义历史事件"""
-    if not request.year:
-        raise HTTPException(status_code=400, detail="年份必填")
-    if not request.title:
-        raise HTTPException(status_code=400, detail="标题必填")
-
-    category = request.category or "其他"
-
-    db_event = models.HistoricalEvent(
-        year=request.year,
-        title=request.title,
-        description=request.description,
-        category=category,
-        importance=request.importance or 1,
-        is_custom=True,
-    )
-    db.add(db_event)
-    db.commit()
-    db.refresh(db_event)
-
-    # 如果有关联故事，批量创建关联
-    if linked_stories and linked_stories.story_ids:
-        for story_id in linked_stories.story_ids:
-            db_rel = models.StoryHistoryRelation(
-                story_id=story_id,
-                event_id=db_event.id
-            )
-            db.add(db_rel)
-        db.commit()
-
-    return db_event
+#     return query.order_by(models.HistoricalEvent.year.asc()).all()
 
 
-@app.patch("/historical-events/{event_id}/custom", response_model=HistoricalEventResponse)
-def update_custom_event(
-    event_id: str,
-    request: HistoricalEventUpdate,
-    linked_stories: CustomEventStoryLink = None,
-    db: Session = Depends(get_db)
-):
-    """更新自定义历史事件（仅限自定义事件）"""
-    event = db.query(models.HistoricalEvent).filter(
-        models.HistoricalEvent.id == event_id
-    ).first()
+# @app.post("/historical-events/custom", response_model=HistoricalEventResponse)
+# def create_custom_event(
+#     request: HistoricalEventUpdate,
+#     linked_stories: CustomEventStoryLink = None,
+#     background_tasks: BackgroundTasks = None,
+#     db: Session = Depends(get_db)
+# ):
+#     """创建自定义历史事件"""
+#     if not request.year:
+#         raise HTTPException(status_code=400, detail="年份必填")
+#     if not request.title:
+#         raise HTTPException(status_code=400, detail="标题必填")
 
-    if not event:
-        raise HTTPException(status_code=404, detail="历史事件不存在")
+#     category = request.category or "其他"
 
-    if not event.is_custom:
-        raise HTTPException(status_code=403, detail="预设事件不可编辑")
+#     db_event = models.HistoricalEvent(
+#         year=request.year,
+#         title=request.title,
+#         description=request.description,
+#         category=category,
+#         importance=request.importance or 1,
+#         is_custom=True,
+#     )
+#     db.add(db_event)
+#     db.commit()
+#     db.refresh(db_event)
 
-    # 更新字段
-    if request.year is not None:
-        event.year = request.year
-    if request.title is not None:
-        event.title = request.title
-    if request.description is not None:
-        event.description = request.description
-    if request.category is not None:
-        event.category = request.category
-    if request.importance is not None:
-        event.importance = request.importance
+#     # 如果有关联故事，批量创建关联
+#     if linked_stories and linked_stories.story_ids:
+#         for story_id in linked_stories.story_ids:
+#             db_rel = models.StoryHistoryRelation(
+#                 story_id=story_id,
+#                 event_id=db_event.id
+#             )
+#             db.add(db_rel)
+#         db.commit()
 
-    db.commit()
-    db.refresh(event)
-
-    # 更新关联故事
-    if linked_stories and linked_stories.story_ids:
-        # 删除旧关联
-        db.query(models.StoryHistoryRelation).filter(
-            models.StoryHistoryRelation.event_id == event_id
-        ).delete()
-        # 插入新关联
-        for story_id in linked_stories.story_ids:
-            db_rel = models.StoryHistoryRelation(
-                story_id=story_id,
-                event_id=event_id
-            )
-            db.add(db_rel)
-        db.commit()
-
-    return event
+#     return db_event
 
 
-@app.delete("/historical-events/{event_id}/custom")
-def delete_custom_event(event_id: str, db: Session = Depends(get_db)):
-    """删除自定义历史事件（仅限自定义事件）"""
-    event = db.query(models.HistoricalEvent).filter(
-        models.HistoricalEvent.id == event_id
-    ).first()
+# @app.patch("/historical-events/{event_id}/custom", response_model=HistoricalEventResponse)
+# def update_custom_event(
+#     event_id: str,
+#     request: HistoricalEventUpdate,
+#     linked_stories: CustomEventStoryLink = None,
+#     db: Session = Depends(get_db)
+# ):
+#     """更新自定义历史事件（仅限自定义事件）"""
+#     event = db.query(models.HistoricalEvent).filter(
+#         models.HistoricalEvent.id == event_id
+#     ).first()
 
-    if not event:
-        raise HTTPException(status_code=404, detail="历史事件不存在")
+#     if not event:
+#         raise HTTPException(status_code=404, detail="历史事件不存在")
 
-    if not event.is_custom:
-        raise HTTPException(status_code=403, detail="预设事件不可删除")
+#     if not event.is_custom:
+#         raise HTTPException(status_code=403, detail="预设事件不可编辑")
 
-    # 删除关联
-    db.query(models.StoryHistoryRelation).filter(
-        models.StoryHistoryRelation.event_id == event_id
-    ).delete()
+#     # 更新字段
+#     if request.year is not None:
+#         event.year = request.year
+#     if request.title is not None:
+#         event.title = request.title
+#     if request.description is not None:
+#         event.description = request.description
+#     if request.category is not None:
+#         event.category = request.category
+#     if request.importance is not None:
+#         event.importance = request.importance
 
-    # 删除事件
-    db.delete(event)
-    db.commit()
+#     db.commit()
+#     db.refresh(event)
 
-    return {"message": "自定义事件已删除"}
+#     # 更新关联故事
+#     if linked_stories and linked_stories.story_ids:
+#         # 删除旧关联
+#         db.query(models.StoryHistoryRelation).filter(
+#             models.StoryHistoryRelation.event_id == event_id
+#         ).delete()
+#         # 插入新关联
+#         for story_id in linked_stories.story_ids:
+#             db_rel = models.StoryHistoryRelation(
+#                 story_id=story_id,
+#                 event_id=event_id
+#             )
+#             db.add(db_rel)
+#         db.commit()
 
-
-@app.post("/historical-events/{event_id}/memories", response_model=EventMemoryResponse)
-def create_event_memory(event_id: str, memory: EventMemoryCreate, db: Session = Depends(get_db)):
-    """新增亲历记录"""
-    # 检查事件是否存在
-    event = db.query(models.HistoricalEvent).filter(models.HistoricalEvent.id == event_id).first()
-    if not event:
-        raise HTTPException(status_code=404, detail="历史事件不存在")
-
-    # 检查人物是否存在（非空时）
-    if memory.person_id:
-        person = db.query(models.Person).filter(models.Person.id == memory.person_id).first()
-        if not person:
-            raise HTTPException(status_code=404, detail="人物不存在")
-
-    db_memory = models.EventMemory(
-        event_id=event_id,
-        person_id=memory.person_id,
-        content=memory.content
-    )
-    db.add(db_memory)
-    db.commit()
-    db.refresh(db_memory)
-    return db_memory
-
-
-@app.get("/historical-events/{event_id}/memories", response_model=List[EventMemoryResponse])
-def read_event_memories(event_id: str, db: Session = Depends(get_db)):
-    """获取该事件的所有亲历记录"""
-    # 检查事件是否存在
-    event = db.query(models.HistoricalEvent).filter(models.HistoricalEvent.id == event_id).first()
-    if not event:
-        raise HTTPException(status_code=404, detail="历史事件不存在")
-
-    memories = db.query(models.EventMemory).filter(
-        models.EventMemory.event_id == event_id
-    ).order_by(models.EventMemory.created_at.desc()).all()
-
-    return memories
+#     return event
 
 
-@app.delete("/historical-events/{event_id}/memories/{mid}")
-def delete_event_memory(event_id: str, mid: str, db: Session = Depends(get_db)):
-    """删除亲历记录"""
-    memory = db.query(models.EventMemory).filter(
-        models.EventMemory.id == mid,
-        models.EventMemory.event_id == event_id
-    ).first()
-    if not memory:
-        raise HTTPException(status_code=404, detail="亲历记录不存在")
+# @app.delete("/historical-events/{event_id}/custom")
+# def delete_custom_event(event_id: str, db: Session = Depends(get_db)):
+#     """删除自定义历史事件（仅限自定义事件）"""
+#     event = db.query(models.HistoricalEvent).filter(
+#         models.HistoricalEvent.id == event_id
+#     ).first()
 
-    db.delete(memory)
-    db.commit()
-    return {"message": "亲历记录已删除"}
+#     if not event:
+#         raise HTTPException(status_code=404, detail="历史事件不存在")
 
+#     if not event.is_custom:
+#         raise HTTPException(status_code=403, detail="预设事件不可删除")
 
-@app.post("/stories/{story_id}/detect-history")
-def detect_story_history(story_id: str, db: Session = Depends(get_db)):
-    """AI 检测故事与历史事件的关联"""
-    # 获取故事
-    story = db.query(models.Story).filter(models.Story.id == story_id).first()
-    if not story:
-        raise HTTPException(status_code=404, detail="故事不存在")
+#     # 删除关联
+#     db.query(models.StoryHistoryRelation).filter(
+#         models.StoryHistoryRelation.event_id == event_id
+#     ).delete()
 
-    if not story.transcript:
-        return {"event_ids": []}
+#     # 删除事件
+#     db.delete(event)
+#     db.commit()
 
-    # 获取所有历史事件
-    events = db.query(models.HistoricalEvent).all()
-    if not events:
-        return {"event_ids": []}
-
-    # 构建事件列表
-    events_list = "\n".join([f"- {e.id}: {e.title} ({e.year}年)" for e in events])
-
-    # 调用 AI 检测
-    api_key = os.getenv("ARK_API_KEY", "")
-    if not api_key:
-        return {"event_ids": []}
-
-    try:
-        client = OpenAI(
-            api_key=api_key,
-            base_url="https://ark.cn-beijing.volces.com/api/v3",
-        )
-
-        prompt = f"""以下是一段口述故事，请判断其中是否涉及到以下历史事件，返回相关事件的id列表（JSON数组格式），比如["id1","id2"]。如果没有关联的事件，返回空数组[]。
-
-历史事件列表：
-{events_list}
-
-故事内容：
-{story.transcript}
-
-请直接返回JSON数组，不要其他内容："""
-
-        response = client.chat.completions.create(
-            model="ep-20260521233914-gllp4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-        )
-
-        result_text = response.choices[0].message.content.strip()
-
-        # 解析 JSON
-        try:
-            # 去掉可能的 ```json 和 ```
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0]
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1].split("```")[0]
-
-            event_ids = json_lib.loads(result_text.strip())
-            if not isinstance(event_ids, list):
-                event_ids = []
-        except:
-            event_ids = []
-
-        # 删除旧的关联
-        db.query(models.StoryHistoryRelation).filter(
-            models.StoryHistoryRelation.story_id == story_id
-        ).delete()
-
-        # 插入新的关联
-        for event_id in event_ids:
-            db_rel = models.StoryHistoryRelation(
-                story_id=story_id,
-                event_id=event_id
-            )
-            db.add(db_rel)
-
-        db.commit()
-        return {"event_ids": event_ids}
-
-    except Exception as e:
-        print(f"AI 检测失败: {str(e)}")
-        return {"event_ids": []}
+#     return {"message": "自定义事件已删除"}
 
 
-@app.get("/historical-events/{event_id}/stories")
-def get_event_stories(event_id: str, db: Session = Depends(get_db)):
-    """获取与该历史事件关联的家族故事"""
-    # 检查事件是否存在
-    event = db.query(models.HistoricalEvent).filter(models.HistoricalEvent.id == event_id).first()
-    if not event:
-        raise HTTPException(status_code=404, detail="历史事件不存在")
+# @app.post("/historical-events/{event_id}/memories", response_model=EventMemoryResponse)
+# def create_event_memory(event_id: str, memory: EventMemoryCreate, db: Session = Depends(get_db)):
+#     """新增亲历记录"""
+#     # 检查事件是否存在
+#     event = db.query(models.HistoricalEvent).filter(models.HistoricalEvent.id == event_id).first()
+#     if not event:
+#         raise HTTPException(status_code=404, detail="历史事件不存在")
 
-    # 获取关联的故事
-    relations = db.query(models.StoryHistoryRelation).filter(
-        models.StoryHistoryRelation.event_id == event_id
-    ).all()
-    story_ids = [r.story_id for r in relations]
+#     # 检查人物是否存在（非空时）
+#     if memory.person_id:
+#         person = db.query(models.Person).filter(models.Person.id == memory.person_id).first()
+#         if not person:
+#             raise HTTPException(status_code=404, detail="人物不存在")
 
-    if not story_ids:
-        return []
+#     db_memory = models.EventMemory(
+#         event_id=event_id,
+#         person_id=memory.person_id,
+#         content=memory.content
+#     )
+#     db.add(db_memory)
+#     db.commit()
+#     db.refresh(db_memory)
+#     return db_memory
 
-    stories = db.query(models.Story).filter(
-        models.Story.id.in_(story_ids)
-    ).all()
 
-    # 为每个故事获取关联人物
-    result = []
-    for story in stories:
-        sp_records = db.query(models.StoryPerson).filter(
-            models.StoryPerson.story_id == story.id
-        ).all()
-        person_ids = [sp.person_id for sp in sp_records]
-        persons = []
-        if person_ids:
-            db_persons = db.query(models.Person).filter(
-                models.Person.id.in_(person_ids)
-            ).all()
-            persons = [
-                {"id": p.id, "name": p.name, "avatar_url": p.avatar_url}
-                for p in db_persons
-            ]
+# @app.get("/historical-events/{event_id}/memories", response_model=List[EventMemoryResponse])
+# def read_event_memories(event_id: str, db: Session = Depends(get_db)):
+#     """获取该事件的所有亲历记录"""
+#     # 检查事件是否存在
+#     event = db.query(models.HistoricalEvent).filter(models.HistoricalEvent.id == event_id).first()
+#     if not event:
+#         raise HTTPException(status_code=404, detail="历史事件不存在")
 
-        result.append({
-            "id": story.id,
-            "transcript": story.transcript,
-            "summary": story.summary,
-            "year": story.year,
-            "persons": persons
-        })
+#     memories = db.query(models.EventMemory).filter(
+#         models.EventMemory.event_id == event_id
+#     ).order_by(models.EventMemory.created_at.desc()).all()
 
-    return result
+#     return memories
+
+
+# @app.delete("/historical-events/{event_id}/memories/{mid}")
+# def delete_event_memory(event_id: str, mid: str, db: Session = Depends(get_db)):
+#     """删除亲历记录"""
+#     memory = db.query(models.EventMemory).filter(
+#         models.EventMemory.id == mid,
+#         models.EventMemory.event_id == event_id
+#     ).first()
+#     if not memory:
+#         raise HTTPException(status_code=404, detail="亲历记录不存在")
+
+#     db.delete(memory)
+#     db.commit()
+#     return {"message": "亲历记录已删除"}
+
+
+# @app.post("/stories/{story_id}/detect-history")
+# def detect_story_history(story_id: str, db: Session = Depends(get_db)):
+#     """AI 检测故事与历史事件的关联"""
+#     # 获取故事
+#     story = db.query(models.Story).filter(models.Story.id == story_id).first()
+#     if not story:
+#         raise HTTPException(status_code=404, detail="故事不存在")
+
+#     if not story.transcript:
+#         return {"event_ids": []}
+
+#     # 获取所有历史事件
+#     events = db.query(models.HistoricalEvent).all()
+#     if not events:
+#         return {"event_ids": []}
+
+#     # 构建事件列表
+#     events_list = "\n".join([f"- {e.id}: {e.title} ({e.year}年)" for e in events])
+
+#     # 调用 AI 检测
+#     api_key = os.getenv("ARK_API_KEY", "")
+#     if not api_key:
+#         return {"event_ids": []}
+
+#     try:
+#         client = OpenAI(
+#             api_key=api_key,
+#             base_url="https://ark.cn-beijing.volces.com/api/v3",
+#         )
+
+#         prompt = f"""以下是一段口述故事，请判断其中是否涉及到以下历史事件，返回相关事件的id列表（JSON数组格式），比如["id1","id2"]。如果没有关联的事件，返回空数组[]。
+
+# 历史事件列表：
+# {events_list}
+
+# 故事内容：
+# {story.transcript}
+
+# 请直接返回JSON数组，不要其他内容："""
+
+#         response = client.chat.completions.create(
+#             model="ep-20260521233914-gllp4",
+#             messages=[{"role": "user", "content": prompt}],
+#             temperature=0.2,
+#         )
+
+#         result_text = response.choices[0].message.content.strip()
+
+#         # 解析 JSON
+#         try:
+#             # 去掉可能的 ```json 和 ```
+#             if "```json" in result_text:
+#                 result_text = result_text.split("```json")[1].split("```")[0]
+#             elif "```" in result_text:
+#                 result_text = result_text.split("```")[1].split("```")[0]
+
+#             event_ids = json_lib.loads(result_text.strip())
+#             if not isinstance(event_ids, list):
+#                 event_ids = []
+#         except:
+#             event_ids = []
+
+#         # 删除旧的关联
+#         db.query(models.StoryHistoryRelation).filter(
+#             models.StoryHistoryRelation.story_id == story_id
+#         ).delete()
+
+#         # 插入新的关联
+#         for event_id in event_ids:
+#             db_rel = models.StoryHistoryRelation(
+#                 story_id=story_id,
+#                 event_id=event_id
+#             )
+#             db.add(db_rel)
+
+#         db.commit()
+#         return {"event_ids": event_ids}
+
+#     except Exception as e:
+#         print(f"AI 检测失败: {str(e)}")
+#         return {"event_ids": []}
+
+
+# @app.get("/historical-events/{event_id}/stories")
+# def get_event_stories(event_id: str, db: Session = Depends(get_db)):
+#     """获取与该历史事件关联的家族故事"""
+#     # 检查事件是否存在
+#     event = db.query(models.HistoricalEvent).filter(models.HistoricalEvent.id == event_id).first()
+#     if not event:
+#         raise HTTPException(status_code=404, detail="历史事件不存在")
+
+#     # 获取关联的故事
+#     relations = db.query(models.StoryHistoryRelation).filter(
+#         models.StoryHistoryRelation.event_id == event_id
+#     ).all()
+#     story_ids = [r.story_id for r in relations]
+
+#     if not story_ids:
+#         return []
+
+#     stories = db.query(models.Story).filter(
+#         models.Story.id.in_(story_ids)
+#     ).all()
+
+#     # 为每个故事获取关联人物
+#     result = []
+#     for story in stories:
+#         sp_records = db.query(models.StoryPerson).filter(
+#             models.StoryPerson.story_id == story.id
+#         ).all()
+#         person_ids = [sp.person_id for sp in sp_records]
+#         persons = []
+#         if person_ids:
+#             db_persons = db.query(models.Person).filter(
+#                 models.Person.id.in_(person_ids)
+#             ).all()
+#             persons = [
+#                 {"id": p.id, "name": p.name, "avatar_url": p.avatar_url}
+#                 for p in db_persons
+#             ]
+
+#         result.append({
+#             "id": story.id,
+#             "transcript": story.transcript,
+#             "summary": story.summary,
+#             "year": story.year,
+#             "persons": persons
+#         })
+
+#     return result
 
 
 # ============= 数据迁移函数 =============

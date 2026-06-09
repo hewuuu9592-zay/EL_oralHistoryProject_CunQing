@@ -40,42 +40,42 @@ class MigrationRecord(Base):
     events = Column(Text, nullable=True)  # JSON数组 [{"year": 1958, "description": "xxx", "source_story_id": "xxx"}]
 
 
-class HistoricalEvent(Base):
-    __tablename__ = "historical_events"
-    id = Column(String, primary_key=True, default=generate_uuid)
-    year = Column(Integer, nullable=False, index=True)
-    title = Column(String, nullable=False)
-    description = Column(Text, nullable=True)
-    category = Column(String, nullable=False)  # 政治/经济/社会/文化/战争
-    importance = Column(Integer, default=1)  # 1-3，决定卡片大小
-    is_custom = Column(Boolean, default=False)  # 是否自定义
-    created_by = Column(String, nullable=True)  # 创建者ID
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+# class HistoricalEvent(Base):
+#     __tablename__ = "historical_events"
+#     id = Column(String, primary_key=True, default=generate_uuid)
+#     year = Column(Integer, nullable=False, index=True)
+#     title = Column(String, nullable=False)
+#     description = Column(Text, nullable=True)
+#     category = Column(String, nullable=False)  # 政治/经济/社会/文化/战争
+#     importance = Column(Integer, default=1)  # 1-3，决定卡片大小
+#     is_custom = Column(Boolean, default=False)  # 是否自定义
+#     created_by = Column(String, nullable=True)  # 创建者ID
+#     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
-class EventMemory(Base):
-    __tablename__ = "event_memories"
-    id = Column(String, primary_key=True, default=generate_uuid)
-    event_id = Column(String, ForeignKey("historical_events.id"), nullable=False)
-    person_id = Column(String, ForeignKey("persons.id"), nullable=True)  # 可空，表示通用回忆
-    content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+# class EventMemory(Base):
+#     __tablename__ = "event_memories"
+#     id = Column(String, primary_key=True, default=generate_uuid)
+#     event_id = Column(String, ForeignKey("historical_events.id"), nullable=False)
+#     person_id = Column(String, ForeignKey("persons.id"), nullable=True)  # 可空，表示通用回忆
+#     content = Column(Text, nullable=False)
+#     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
-class StoryHistoryRelation(Base):
-    __tablename__ = "story_history_relations"
-    id = Column(String, primary_key=True, default=generate_uuid)
-    story_id = Column(String, ForeignKey("stories.id"), nullable=False)
-    event_id = Column(String, ForeignKey("historical_events.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+# class StoryHistoryRelation(Base):
+#     __tablename__ = "story_history_relations"
+#     id = Column(String, primary_key=True, default=generate_uuid)
+#     story_id = Column(String, ForeignKey("stories.id"), nullable=False)
+#     event_id = Column(String, ForeignKey("historical_events.id"), nullable=False)
+#     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
-class Relationship(Base):
-    __tablename__ = "relationships"
-    id = Column(String, primary_key=True, default=generate_uuid)
-    person_a_id = Column(String, ForeignKey("persons.id"), nullable=False)
-    person_b_id = Column(String, ForeignKey("persons.id"), nullable=False)
-    relation_type = Column(String, nullable=False)  # father/mother/spouse/sibling/child/other
-    label = Column(String, nullable=True)
+# class Relationship(Base):
+#     __tablename__ = "relationships"
+#     id = Column(String, primary_key=True, default=generate_uuid)
+#     person_a_id = Column(String, ForeignKey("persons.id"), nullable=False)
+#     person_b_id = Column(String, ForeignKey("persons.id"), nullable=False)
+#     relation_type = Column(String, nullable=False)  # father/mother/spouse/sibling/child/other
+#     label = Column(String, nullable=True)
 
 class Story(Base):
     __tablename__ = "stories"
@@ -160,7 +160,7 @@ class PersonChapter(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     person_id = Column(String, ForeignKey("persons.id"), nullable=False)
     chapter_id = Column(String, ForeignKey("autobiography_chapters.id"), nullable=False)
-    status = Column(String, default="not_started")  # not_started/in_progress/completed/skipped
+    status = Column(String, default="not_started")  # not_started/in_progress/completed
     skip_reason = Column(Text, nullable=True)  # 跳过原因
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow)
