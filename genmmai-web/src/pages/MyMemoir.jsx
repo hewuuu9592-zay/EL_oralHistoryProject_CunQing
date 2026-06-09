@@ -71,7 +71,7 @@ const MyMemoir = () => {
   const navItems = [
     { key: 'today', label: '我的自传' },
     { key: 'stories', label: '我的故事' },
-    { key: 'tree', label: '家族脉络' },
+    { key: 'tree', label: '家庭成员' },
     { key: 'map', label: '我的足迹' },
   ]
 
@@ -239,7 +239,7 @@ const MyMemoir = () => {
             <MyStories personId={currentPersonId} />
           )}
 
-          {/* 家族脉络 */}
+          {/* 家庭成员 */}
           {activeTab === 'tree' && <FamilyMembers />}
 
           {/* 我的足迹 */}
