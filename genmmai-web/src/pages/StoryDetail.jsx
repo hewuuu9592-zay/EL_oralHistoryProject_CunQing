@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getStory, patchStory, getPersons, getStoryGenerationStatus, deleteStory, getSessionRounds, regeneratePolishing, retagStory } from '../api';
+import { getStory, patchStory, getPersons, getStoryGenerationStatus, deleteStory, getSessionRounds, regeneratePolishing, retagStory, updateInterviewTranscripts, rebuildInterviewTranscript } from '../api';
 
 const StoryDetail = () => {
   const { id } = useParams();
@@ -174,10 +174,28 @@ const StoryDetail = () => {
         setStory(res.data);
       } else if (activeTab === 'transcript') {
         // Tab2: 保存对话轮次
-        await patchStory(id, { transcript: editRounds.map(r => r.transcript).join('\n\n') });
-        // 立即刷新
-        const res = await getStory(id);
-        setStory(res.data);
+        if (story?.source_session_id) {
+          // 有采访会话：分两步保存
+          // 1. 更新每轮转录
+          const updateRequest = editRounds
+            .filter(r => r.id && !r.id.startsWith('manual-'))
+            .map(r => ({ round_id: r.id, transcript: r.transcript }));
+          if (updateRequest.length > 0) {
+            await updateInterviewTranscripts(story.source_session_id, updateRequest);
+          }
+          // 2. 重新生成 combined transcript
+          await rebuildInterviewTranscript(story.source_session_id);
+          // 3. 刷新 story 和 editRounds
+          const res = await getStory(id);
+          setStory(res.data);
+          const roundsRes = await getSessionRounds(story.source_session_id);
+          setEditRounds(roundsRes.data || []);
+        } else {
+          // 无采访会话：直接保存到 story.transcript（保持原有逻辑）
+          await patchStory(id, { transcript: editRounds.map(r => r.transcript).join('\n\n') });
+          const res = await getStory(id);
+          setStory(res.data);
+        }
       } else if (activeTab === 'structured') {
         // Tab3: 保存结构化信息
         await patchStory(id, {

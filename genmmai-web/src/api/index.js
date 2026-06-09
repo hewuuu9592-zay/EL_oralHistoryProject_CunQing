@@ -127,4 +127,9 @@ export const updateInterviewTranscripts = (sessionId, transcripts) => {
   return api.patch(`/interviews/${sessionId}/transcripts`, transcripts);
 };
 
+// 重新生成 combined transcript
+export const rebuildInterviewTranscript = (sessionId) => {
+  return api.post(`/interviews/${sessionId}/rebuild-transcript`);
+};
+
 export default api;

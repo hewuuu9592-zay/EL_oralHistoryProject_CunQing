@@ -1376,6 +1376,40 @@ def update_interview_transcripts(
     return {"updated_count": updated_count}
 
 
+@app.post("/interviews/{session_id}/rebuild-transcript")
+def rebuild_interview_transcript(session_id: str, db: Session = Depends(get_db)):
+    """从 interview_rounds 表重新读取所有轮次，按【问】【答-第X轮】格式拼合，更新到对应 story"""
+    session = db.query(models.InterviewSession).filter(
+        models.InterviewSession.id == session_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="采访会话不存在")
+
+    # 读取所有轮次
+    rounds = db.query(models.InterviewRound).filter(
+        models.InterviewRound.session_id == session_id
+    ).order_by(models.InterviewRound.round_index).all()
+
+    # 拼合【问】【答-第X轮】格式
+    lines = []
+    for i, r in enumerate(rounds):
+        if r.question:
+            lines.append(r.question)
+        lines.append(f"【答-第{i+1}轮】{r.transcript or ''}")
+
+    combined_transcript = '\n\n'.join(lines)
+
+    # 更新到对应 story
+    if session.story_id:
+        story = db.query(models.Story).filter(models.Story.id == session.story_id).first()
+        if story:
+            story.transcript = combined_transcript
+            db.commit()
+            db.refresh(story)
+
+    return {"transcript": combined_transcript}
+
+
 @app.delete("/interviews/{session_id}")
 def delete_interview(session_id: str, db: Session = Depends(get_db)):
     """删除采访记录及关联故事"""
