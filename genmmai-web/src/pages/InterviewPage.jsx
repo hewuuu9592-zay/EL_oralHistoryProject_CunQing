@@ -735,7 +735,7 @@ const InterviewPage = () => {
         </div>
 
         <div className="flex-1 overflow-auto p-4">
-          <div className="max-w-sm mx-auto space-y-6">
+          <div className="w-full mx-auto space-y-6">
             {validRounds.map((r, i) => (
               <div key={i} className="bg-white rounded-xl p-4 shadow-sm">
                 {/* AI问题 */}
