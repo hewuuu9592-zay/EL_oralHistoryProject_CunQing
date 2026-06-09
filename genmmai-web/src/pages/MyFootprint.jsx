@@ -172,7 +172,7 @@ const AddMigrationModal = ({ migration, onSave, onCancel }) => {
     }
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(keyword)}&format=json&limit=5&accept-language=zh`
+        `http://localhost:8000/geocode/search?q=${encodeURIComponent(keyword)}`
       )
       const data = await response.json()
       setSearchResults(data)

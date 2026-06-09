@@ -2082,6 +2082,38 @@ def geocode_place_nominatim(place_name: str) -> Optional[dict]:
     return None
 
 
+@app.get("/geocode/search")
+def search_place(q: str, limit: int = 5):
+    """搜索地点列表（调用 Nominatim API）"""
+    import requests as httpx_requests
+
+    if not q or len(q) < 2:
+        return []
+
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": q,
+            "format": "json",
+            "limit": limit,
+            "accept-language": "zh"
+        }
+        headers = {
+            "User-Agent": "FamilyTreeApp/1.0"
+        }
+        response = httpx_requests.get(url, params=params, headers=headers, timeout=5)
+        data = response.json()
+
+        return [{
+            "display_name": item.get("display_name"),
+            "lat": item.get("lat"),
+            "lon": item.get("lon")
+        } for item in data]
+    except Exception as e:
+        print(f"搜索地点失败: {str(e)}")
+        return []
+
+
 @app.post("/stories/{story_id}/extract-migrations", response_model=List[MigrateExtractResponseItem])
 def extract_story_migrations(story_id: str, db: Session = Depends(get_db)):
     """从故事中提取迁徙记录建议（不写入数据库）"""
