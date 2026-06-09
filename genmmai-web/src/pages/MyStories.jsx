@@ -68,7 +68,7 @@ const MyStories = ({ personId }) => {
   }
 
   return (
-    <div className="p-4">
+    <div className="p-4 overflow-y-auto h-full">
       {/* 顶部标题和统计 */}
       <div className="mb-4">
         <h2 className="text-2xl font-serif text-[#5C3D2E]">我的故事</h2>
