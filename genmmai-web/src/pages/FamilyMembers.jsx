@@ -388,10 +388,11 @@ const FamilyMembers = ({ onSelectPerson }) => {
     '兄弟姐妹': '兄弟姐妹',
     '伴侣': '伴侣',
     '子女': '子女',
+    '亲戚': '亲戚',
     '其他': '其他',
   }
 
-  const groupOrder = ['父母', '兄弟姐妹', '伴侣', '子女', '其他']
+  const groupOrder = ['父母', '兄弟姐妹', '伴侣', '子女', '亲戚', '其他']
 
   if (loading) {
     return (

@@ -1741,6 +1741,11 @@ def create_migration_record(person_id: str, migration: MigrationRecordCreate, db
 
         db.commit()
         db.refresh(existing)
+
+        # 🔧 修复：将 events 从 JSON 字符串解析为列表
+        if isinstance(existing.events, str):
+            existing.events = json_lib.loads(existing.events)
+
         return existing
     else:
         # 没有记录，新建一条
@@ -1769,6 +1774,11 @@ def create_migration_record(person_id: str, migration: MigrationRecordCreate, db
         db.add(db_record)
         db.commit()
         db.refresh(db_record)
+
+        # 🔧 修复：将 events 从 JSON 字符串解析为列表
+        if isinstance(db_record.events, str):
+            db_record.events = json_lib.loads(db_record.events)
+            
         return db_record
 
 
@@ -3391,6 +3401,7 @@ def get_family_members(db: Session = Depends(get_db)):
         "兄弟姐妹": [],
         "伴侣": [],
         "子女": [],
+        "亲戚": [],
         "其他": [],
     }
 
@@ -3403,13 +3414,15 @@ def get_family_members(db: Session = Depends(get_db)):
             "avatar_url": m.avatar_url,
         }
         rel = m.relation_to_owner or ""
-        if rel in ["父亲", "母亲"]:
+        if any(keyword in rel for keyword in ["父", "母", "妈", "爸"]):
             groups["父母"].append(member_data)
-        elif rel in ["兄", "弟", "姐", "妹", "哥哥", "弟弟", "姐姐", "妹妹", "兄长"]:
-            groups["兄弟姐妹"].append(member_data)
-        elif rel in ["丈夫", "妻子", "老伴", "伴侣"]:
+        elif any(keyword in rel for keyword in ["哥", "姐", "弟", "妹"]):
+            groups["手足"].append(member_data)
+        elif any(keyword in rel for keyword in ["丈夫", "妻子", "老伴", "伴侣", "爱人", "老婆", "老公", "夫人", "先生", "媳妇"]):
             groups["伴侣"].append(member_data)
-        elif rel in ["儿子", "女儿", "孩子"]:
+        elif any(keyword in rel for keyword in ["姑", "婆", "舅", "甥", "侄", "婿", "媳"]):
+            groups["亲戚"].append(member_data)
+        elif any(keyword in rel for keyword in ["儿子", "女儿", "孩", "儿"]):
             groups["子女"].append(member_data)
         else:
             groups["其他"].append(member_data)
