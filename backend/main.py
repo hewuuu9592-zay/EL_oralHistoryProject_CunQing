@@ -115,6 +115,11 @@ class StoryBase(BaseModel):
     summary: Optional[str] = None
     year: Optional[int] = None
     decade: Optional[str] = None
+    title: Optional[str] = None  # 故事标题
+    tags: Optional[str] = None  # JSON 数组标签
+    involved_people: Optional[str] = None  # JSON 数组涉及人物
+    key_events: Optional[str] = None  # JSON 数组核心事件
+    time_range: Optional[str] = None  # 时间范围描述
     transcription_status: Optional[str] = "pending"
     ai_tag_status: Optional[str] = "untagged"
     chapter_id: Optional[str] = None  # 关联的章节ID
@@ -248,7 +253,14 @@ class StoryUpdate(BaseModel):
     """更新故事"""
     transcript: Optional[str] = None
     narrative_polish: Optional[str] = None
+    title: Optional[str] = None
+    summary: Optional[str] = None
     year: Optional[int] = None
+    decade: Optional[str] = None
+    tags: Optional[str] = None
+    involved_people: Optional[str] = None
+    key_events: Optional[str] = None
+    time_range: Optional[str] = None
     person_ids: Optional[List[str]] = None
     related_history_id: Optional[str] = None
     related_history: Optional[str] = None
