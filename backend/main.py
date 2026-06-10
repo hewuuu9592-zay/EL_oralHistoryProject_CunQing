@@ -2830,10 +2830,10 @@ def delete_story(story_id: str, db: Session = Depends(get_db)):
         models.StoryPerson.story_id == story_id
     ).delete()
 
-    # 删除 story_history_relations 关联记录
-    db.query(models.StoryHistoryRelation).filter(
-        models.StoryHistoryRelation.story_id == story_id
-    ).delete()
+    # # 删除 story_history_relations 关联记录
+    # db.query(models.StoryHistoryRelation).filter(
+    #     models.StoryHistoryRelation.story_id == story_id
+    # ).delete()
 
     # 删除关联的采访会话（如果存在）
     if story.source_session_id:

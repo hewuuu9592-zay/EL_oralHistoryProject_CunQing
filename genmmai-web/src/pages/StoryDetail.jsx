@@ -143,7 +143,7 @@ const StoryDetail = () => {
         setEditNarrativePolish(storyRes.data.narrative_polish || '');
 
         // 轮询生成状态（只对pending/生成中状态轮询）
-        if (res.data?.generation_status && !['done', 'failed'].includes(res.data.generation_status)) {
+        if (storyRes.data?.generation_status && !['done', 'failed'].includes(res.data.generation_status)) {
           const pollStatus = async () => {
             try {
               const statusRes = await getStoryGenerationStatus(id);
@@ -214,13 +214,19 @@ const StoryDetail = () => {
         rounds = res.data || [];
       } else if (story?.transcript) {
         // 无采访会话，从 transcript 字段解析
-        const blocks = story.transcript.split('\n\n').filter(b => b.trim());
-        rounds = blocks.map((transcript, i) => ({
-          id: `manual-${i}`,
-          round_index: i,
-          transcript,
-          question: '',
-        }));
+        // 格式：【问】问题\n【答-第X轮】回答 或 【问】问题【答-第X轮】回答
+        // 按【答-第X轮】分割，每个块包含问题和回答
+        const parts = story.transcript.split(/(?=\【答-第\d+轮】)/);
+        rounds = parts.filter(p => p.trim()).map((part, i) => {
+          const answerMatch = part.match(/【答-第\d+轮】(.+)/s);
+          const questionPart = part.replace(/【答-第\d+轮】.+$/s, '').replace(/【问】/g, '').trim();
+          return {
+            id: `manual-${i}`,
+            round_index: i,
+            question: questionPart,
+            transcript: answerMatch ? answerMatch[1].trim() : part.trim(),
+          };
+        });
       }
       setEditRounds(rounds);
     } catch (err) {
@@ -278,8 +284,17 @@ const StoryDetail = () => {
           const roundsRes = await getSessionRounds(story.source_session_id);
           setEditRounds(roundsRes.data || []);
         } else {
-          // 无采访会话：直接保存到 story.transcript（保持原有逻辑）
-          await patchStory(id, { transcript: editRounds.map(r => r.transcript).join('\n\n') });
+          // 无采访会话：保持【问】【答-第X轮】格式保存
+          const transcriptText = editRounds
+            .filter(r => r.transcript?.trim())
+            .map(r => {
+              if (r.question) {
+                return `【问】${r.question}\n【答-第${r.round_index + 1}轮】${r.transcript}`;
+              }
+              return `【答-第${r.round_index + 1}轮】${r.transcript}`;
+            })
+            .join('\n\n');
+          await patchStory(id, { transcript: transcriptText });
           const res = await getStory(id);
           setStory(res.data);
         }
