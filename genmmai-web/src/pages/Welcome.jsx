@@ -62,8 +62,8 @@ const Welcome = () => {
     <div className="min-h-screen bg-[#FAF7F2] flex flex-col items-center justify-center p-6">
       {/* 顶部标题 */}
       <div className="text-center mb-12">
-        <h1 className="text-4xl font-serif text-[#5C3D2E] mb-3">根脉</h1>
-        <p className="text-lg text-gray-500">记录你的故事，留给最爱的人</p>
+        <h1 className="text-4xl font-serif text-[#5C3D2E] mb-3">存青</h1>
+        <p className="text-lg text-gray-500">生如风人如渡，惟留一简书</p>
       </div>
 
       {/* 表单 */}
