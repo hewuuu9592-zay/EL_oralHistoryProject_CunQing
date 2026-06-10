@@ -50,6 +50,34 @@ const StoryDetail = () => {
     key_events: '',
   });
 
+  // 解析 JSON 数组
+  const parseJsonArray = (str) => {
+    if (!str) return [];
+    try {
+      return JSON.parse(str);
+    } catch {
+      return [];
+    }
+  };
+
+  // 添加标签
+  const addTag = (field, value) => {
+    if (!value.trim()) return;
+    const current = parseJsonArray(editStructured[field]);
+    if (!current.includes(value.trim())) {
+      const newArray = [...current, value.trim()];
+      setEditStructured({ ...editStructured, [field]: JSON.stringify(newArray) });
+    }
+    setTagInput({ ...tagInput, [field]: '' });
+  };
+
+  // 删除标签
+  const removeTag = (field, index) => {
+    const current = parseJsonArray(editStructured[field]);
+    const newArray = current.filter((_, i) => i !== index);
+    setEditStructured({ ...editStructured, [field]: JSON.stringify(newArray) });
+  };
+
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -805,20 +833,42 @@ const StoryDetail = () => {
               {/* 核心标签 */}
               {isEditing ? (
                 <div>
-                  <label className="block text-xs text-gray-400 uppercase mb-1">核心标签 (JSON 数组)</label>
-                  <input
-                    type="text"
-                    value={editStructured.tags}
-                    onChange={(e) => setEditStructured({ ...editStructured, tags: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
-                    placeholder='["标签1", "标签2"]'
-                  />
+                  <label className="block text-xs text-gray-400 uppercase mb-1">核心标签</label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {parseJsonArray(editStructured.tags).map((tag, i) => (
+                      <span key={i} className="flex items-center gap-1 px-3 py-1 bg-[#FEF3C7] text-amber-700 rounded-full text-sm">
+                        {tag}
+                        <button
+                          onClick={() => removeTag('tags', i)}
+                          className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-amber-200"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={tagInput.tags}
+                      onChange={(e) => setTagInput({ ...tagInput, tags: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag('tags', tagInput.tags))}
+                      className="flex-1 px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                      placeholder="输入标签，回车添加"
+                    />
+                    <button
+                      onClick={() => addTag('tags', tagInput.tags)}
+                      className="px-3 py-2 bg-[#D4A574] text-white rounded-lg hover:bg-[#C49A64]"
+                    >
+                      添加
+                    </button>
+                  </div>
                 </div>
-              ) : story.tags && (
+              ) : parseJsonArray(story.tags).length > 0 && (
                 <div>
                   <h4 className="text-xs text-gray-400 uppercase mb-1">核心标签</h4>
                   <div className="flex flex-wrap gap-2">
-                    {JSON.parse(story.tags || '[]').map((tag, i) => (
+                    {parseJsonArray(story.tags).map((tag, i) => (
                       <span key={i} className="px-3 py-1 bg-[#FEF3C7] text-amber-700 rounded-full text-sm">
                         {tag}
                       </span>
@@ -830,20 +880,42 @@ const StoryDetail = () => {
               {/* 涉及人物 */}
               {isEditing ? (
                 <div>
-                  <label className="block text-xs text-gray-400 uppercase mb-1">涉及人物 (JSON 数组)</label>
-                  <input
-                    type="text"
-                    value={editStructured.involved_people}
-                    onChange={(e) => setEditStructured({ ...editStructured, involved_people: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
-                    placeholder='["人物1", "人物2"]'
-                  />
+                  <label className="block text-xs text-gray-400 uppercase mb-1">涉及人物</label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {parseJsonArray(editStructured.involved_people).map((person, i) => (
+                      <span key={i} className="flex items-center gap-1 px-3 py-1 bg-[#DBEAFE] text-blue-700 rounded-full text-sm">
+                        {person}
+                        <button
+                          onClick={() => removeTag('involved_people', i)}
+                          className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-blue-200"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={tagInput.involved_people}
+                      onChange={(e) => setTagInput({ ...tagInput, involved_people: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag('involved_people', tagInput.involved_people))}
+                      className="flex-1 px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                      placeholder="输入人物，回车添加"
+                    />
+                    <button
+                      onClick={() => addTag('involved_people', tagInput.involved_people)}
+                      className="px-3 py-2 bg-[#D4A574] text-white rounded-lg hover:bg-[#C49A64]"
+                    >
+                      添加
+                    </button>
+                  </div>
                 </div>
-              ) : story.involved_people && (
+              ) : parseJsonArray(story.involved_people).length > 0 && (
                 <div>
                   <h4 className="text-xs text-gray-400 uppercase mb-1">涉及人物</h4>
                   <div className="flex flex-wrap gap-2">
-                    {JSON.parse(story.involved_people || '[]').map((person, i) => (
+                    {parseJsonArray(story.involved_people).map((person, i) => (
                       <span key={i} className="px-3 py-1 bg-[#DBEAFE] text-blue-700 rounded-full text-sm">
                         {person}
                       </span>
@@ -855,20 +927,42 @@ const StoryDetail = () => {
               {/* 核心事件 */}
               {isEditing ? (
                 <div>
-                  <label className="block text-xs text-gray-400 uppercase mb-1">核心事件 (JSON 数组)</label>
-                  <input
-                    type="text"
-                    value={editStructured.key_events}
-                    onChange={(e) => setEditStructured({ ...editStructured, key_events: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
-                    placeholder='["事件1", "事件2"]'
-                  />
+                  <label className="block text-xs text-gray-400 uppercase mb-1">核心事件</label>
+                  <div className="space-y-2 mb-2">
+                    {parseJsonArray(editStructured.key_events).map((event, i) => (
+                      <div key={i} className="flex items-center gap-2 px-3 py-2 bg-[#FCE7F3] text-pink-700 rounded-lg">
+                        <span className="flex-1">{event}</span>
+                        <button
+                          onClick={() => removeTag('key_events', i)}
+                          className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-pink-200 text-sm"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={tagInput.key_events}
+                      onChange={(e) => setTagInput({ ...tagInput, key_events: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag('key_events', tagInput.key_events))}
+                      className="flex-1 px-3 py-2 border border-[#E5DED3] rounded-lg focus:outline-none focus:border-[#D4A574] text-[#4A3728]"
+                      placeholder="输入事件，回车添加"
+                    />
+                    <button
+                      onClick={() => addTag('key_events', tagInput.key_events)}
+                      className="px-3 py-2 bg-[#D4A574] text-white rounded-lg hover:bg-[#C49A64]"
+                    >
+                      添加
+                    </button>
+                  </div>
                 </div>
-              ) : story.key_events && (
+              ) : parseJsonArray(story.key_events).length > 0 && (
                 <div>
                   <h4 className="text-xs text-gray-400 uppercase mb-1">核心事件</h4>
                   <ol className="space-y-1 list-decimal list-inside">
-                    {JSON.parse(story.key_events || '[]').map((event, i) => (
+                    {parseJsonArray(story.key_events).map((event, i) => (
                       <li key={i} className="text-gray-700">{event}</li>
                     ))}
                   </ol>
