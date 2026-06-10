@@ -396,39 +396,6 @@ class EventMemoryResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ============= Geocoding Helper =============
-
-def geocode_place(place_name: str) -> Optional[dict]:
-    """调用高德地图 API 获取地名坐标"""
-    import requests as httpx_requests
-
-    api_key = os.getenv("AMAP_API_KEY", "")
-    if not api_key:
-        return None
-
-    try:
-        url = "https://restapi.amap.com/v3/Geocode/geo"
-        params = {
-            "key": api_key,
-            "address": place_name,
-            "output": "json"
-        }
-        response = httpx_requests.get(url, params=params, timeout=5)
-        data = response.json()
-
-        if data.get("status") == "1" and data.get("geocodes"):
-            geocode = data["geocodes"][0]
-            location = geocode.get("location", "")
-            if location:
-                lng, lat = location.split(",")
-                return {
-                    "latitude": float(lat),
-                    "longitude": float(lng)
-                }
-    except Exception as e:
-        print(f"高德 API 调用失败: {str(e)}")
-    return None
-
 # ============= API Endpoints =============
 
 @app.get("/persons", response_model=List[Person])
@@ -3308,132 +3275,132 @@ def retag_story(story_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"重新标注失败：{str(e)}")
 
 
-# ============= Family Timeline API =============
+# # ============= Family Timeline API =============
 
-class FamilyTimelineStory(BaseModel):
-    """家族时间轴中的故事"""
-    id: str
-    summary: Optional[str] = None
-    year: Optional[int] = None
-    decade: Optional[str] = None
-    audio_url: Optional[str] = None
-    transcript: Optional[str] = None
-    related_history_id: Optional[str] = None
-    related_history: Optional[str] = None
-    persons: List[dict] = []
+# class FamilyTimelineStory(BaseModel):
+#     """家族时间轴中的故事"""
+#     id: str
+#     summary: Optional[str] = None
+#     year: Optional[int] = None
+#     decade: Optional[str] = None
+#     audio_url: Optional[str] = None
+#     transcript: Optional[str] = None
+#     related_history_id: Optional[str] = None
+#     related_history: Optional[str] = None
+#     persons: List[dict] = []
 
-    class Config:
-        from_attributes = True
-
-
-@app.get("/family/timeline", response_model=List[FamilyTimelineStory])
-def read_family_timeline(
-    person_id: Optional[str] = None,
-    year_from: Optional[int] = None,
-    year_to: Optional[int] = None,
-    db: Session = Depends(get_db)
-):
-    """家族总时间轴 - 查询所有故事，支持人物/年代过滤"""
-    query = db.query(models.Story)
-
-    # 按人物过滤
-    if person_id:
-        sp_records = db.query(models.StoryPerson).filter(
-            models.StoryPerson.person_id == person_id
-        ).all()
-        story_ids = [sp.story_id for sp in sp_records]
-        query = query.filter(models.Story.id.in_(story_ids))
-
-    # 按年代范围过滤
-    if year_from is not None:
-        query = query.filter(models.Story.year >= year_from)
-    if year_to is not None:
-        query = query.filter(models.Story.year <= year_to)
-
-    # 按 year 升序，year 为空的放最后
-    stories = query.order_by(
-        models.Story.year.is_(None),
-        models.Story.year.asc()
-    ).all()
-
-    # 构建返回结果，为每条故事附加人物列表
-    result = []
-    for story in stories:
-        # 获取关联的人物列表
-        sp_records = db.query(models.StoryPerson).filter(
-            models.StoryPerson.story_id == story.id
-        ).all()
-
-        persons = []
-        for sp in sp_records:
-            person = db.query(models.Person).filter(
-                models.Person.id == sp.person_id
-            ).first()
-            if person:
-                persons.append({
-                    "id": person.id,
-                    "name": person.name,
-                    "avatar_url": person.avatar_url
-                })
-
-        result.append(FamilyTimelineStory(
-            id=story.id,
-            summary=story.summary,
-            year=story.year,
-            decade=story.decade,
-            audio_url=story.audio_url,
-            transcript=story.transcript,
-            persons=persons
-        ))
-
-    return result
+#     class Config:
+#         from_attributes = True
 
 
-# ============= Family Migrations API =============
+# @app.get("/family/timeline", response_model=List[FamilyTimelineStory])
+# def read_family_timeline(
+#     person_id: Optional[str] = None,
+#     year_from: Optional[int] = None,
+#     year_to: Optional[int] = None,
+#     db: Session = Depends(get_db)
+# ):
+#     """家族总时间轴 - 查询所有故事，支持人物/年代过滤"""
+#     query = db.query(models.Story)
 
-@app.get("/family/migrations")
-def read_family_migrations(db: Session = Depends(get_db)):
-    """家族总迁徙地图 - 查询所有人物的所有迁徙记录"""
-    records = db.query(models.MigrationRecord).join(
-        models.Person,
-        models.MigrationRecord.person_id == models.Person.id
-    ).order_by(
-        models.MigrationRecord.year.is_(None),
-        models.MigrationRecord.year.asc()
-    ).all()
+#     # 按人物过滤
+#     if person_id:
+#         sp_records = db.query(models.StoryPerson).filter(
+#             models.StoryPerson.person_id == person_id
+#         ).all()
+#         story_ids = [sp.story_id for sp in sp_records]
+#         query = query.filter(models.Story.id.in_(story_ids))
 
-    result = []
-    for record in records:
-        # 重新查询人物信息
-        person = db.query(models.Person).filter(models.Person.id == record.person_id).first()
-        result.append({
-            "id": record.id,
-            "person_id": record.person_id,
-            "person_name": person.name if person else None,
-            "person_avatar": person.avatar_url if person else None,
-            "place_name": record.place_name,
-            "latitude": record.latitude,
-            "longitude": record.longitude,
-            "year": record.year,
-            "description": record.description
-        })
+#     # 按年代范围过滤
+#     if year_from is not None:
+#         query = query.filter(models.Story.year >= year_from)
+#     if year_to is not None:
+#         query = query.filter(models.Story.year <= year_to)
 
-    return result
+#     # 按 year 升序，year 为空的放最后
+#     stories = query.order_by(
+#         models.Story.year.is_(None),
+#         models.Story.year.asc()
+#     ).all()
+
+#     # 构建返回结果，为每条故事附加人物列表
+#     result = []
+#     for story in stories:
+#         # 获取关联的人物列表
+#         sp_records = db.query(models.StoryPerson).filter(
+#             models.StoryPerson.story_id == story.id
+#         ).all()
+
+#         persons = []
+#         for sp in sp_records:
+#             person = db.query(models.Person).filter(
+#                 models.Person.id == sp.person_id
+#             ).first()
+#             if person:
+#                 persons.append({
+#                     "id": person.id,
+#                     "name": person.name,
+#                     "avatar_url": person.avatar_url
+#                 })
+
+#         result.append(FamilyTimelineStory(
+#             id=story.id,
+#             summary=story.summary,
+#             year=story.year,
+#             decade=story.decade,
+#             audio_url=story.audio_url,
+#             transcript=story.transcript,
+#             persons=persons
+#         ))
+
+#     return result
 
 
-@app.get("/family/migrations/persons")
-def read_family_migrations_persons(db: Session = Depends(get_db)):
-    """返回有迁徙记录的人物列表（用于前端按人物过滤）"""
-    # 找出有迁徙记录的人物
-    person_ids = db.query(models.MigrationRecord.person_id).distinct().all()
-    person_ids = [p[0] for p in person_ids]
+# # ============= Family Migrations API =============
 
-    if not person_ids:
-        return []
+# @app.get("/family/migrations")
+# def read_family_migrations(db: Session = Depends(get_db)):
+#     """家族总迁徙地图 - 查询所有人物的所有迁徙记录"""
+#     records = db.query(models.MigrationRecord).join(
+#         models.Person,
+#         models.MigrationRecord.person_id == models.Person.id
+#     ).order_by(
+#         models.MigrationRecord.year.is_(None),
+#         models.MigrationRecord.year.asc()
+#     ).all()
 
-    persons = db.query(models.Person).filter(models.Person.id.in_(person_ids)).all()
+#     result = []
+#     for record in records:
+#         # 重新查询人物信息
+#         person = db.query(models.Person).filter(models.Person.id == record.person_id).first()
+#         result.append({
+#             "id": record.id,
+#             "person_id": record.person_id,
+#             "person_name": person.name if person else None,
+#             "person_avatar": person.avatar_url if person else None,
+#             "place_name": record.place_name,
+#             "latitude": record.latitude,
+#             "longitude": record.longitude,
+#             "year": record.year,
+#             "description": record.description
+#         })
 
-    return [{"id": p.id, "name": p.name, "avatar_url": p.avatar_url} for p in persons]
+#     return result
+
+
+# @app.get("/family/migrations/persons")
+# def read_family_migrations_persons(db: Session = Depends(get_db)):
+#     """返回有迁徙记录的人物列表（用于前端按人物过滤）"""
+#     # 找出有迁徙记录的人物
+#     person_ids = db.query(models.MigrationRecord.person_id).distinct().all()
+#     person_ids = [p[0] for p in person_ids]
+
+#     if not person_ids:
+#         return []
+
+#     persons = db.query(models.Person).filter(models.Person.id.in_(person_ids)).all()
+
+#     return [{"id": p.id, "name": p.name, "avatar_url": p.avatar_url} for p in persons]
 
 
 # ============= Family Members API =============
