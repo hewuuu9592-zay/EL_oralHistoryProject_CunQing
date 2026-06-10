@@ -43,6 +43,13 @@ const StoryDetail = () => {
     time_range: '',
   });
 
+  // 标签输入状态
+  const [tagInput, setTagInput] = useState({
+    tags: '',
+    involved_people: '',
+    key_events: '',
+  });
+
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -903,8 +910,7 @@ const StoryDetail = () => {
               {story.persons.map((person) => (
                 <div
                   key={person.id}
-                  onClick={() => navigate(`/person/${person.id}`)}
-                  className="flex flex-col items-center cursor-pointer"
+                  className="flex flex-col items-center"
                 >
                   {person.avatar_url ? (
                     <img
