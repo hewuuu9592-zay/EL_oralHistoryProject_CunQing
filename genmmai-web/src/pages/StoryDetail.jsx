@@ -7,6 +7,7 @@ const StoryDetail = () => {
   const navigate = useNavigate();
 
   const [story, setStory] = useState(null);
+  const [persons, setPersons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -50,6 +51,11 @@ const StoryDetail = () => {
     key_events: '',
   });
 
+  // 人物绑定状态
+  const [linkedPersonIds, setLinkedPersonIds] = useState([]);
+  const [showPersonDropdown, setShowPersonDropdown] = useState(false);
+  const [personSearch, setPersonSearch] = useState('');
+
   // 解析 JSON 数组
   const parseJsonArray = (str) => {
     if (!str) return [];
@@ -78,6 +84,44 @@ const StoryDetail = () => {
     setEditStructured({ ...editStructured, [field]: JSON.stringify(newArray) });
   };
 
+  // 获取关联的人物列表
+  const getLinkedPersons = () => {
+    return persons.filter(p => linkedPersonIds.includes(p.id));
+  };
+
+  // 过滤匹配的家庭成员
+  const getFilteredPersons = () => {
+    if (!personSearch) return persons;
+    const search = personSearch.toLowerCase();
+    return persons.filter(p => p.name?.toLowerCase().includes(search));
+  };
+
+  // 绑定人物
+  const linkPerson = (personId) => {
+    if (!linkedPersonIds.includes(personId)) {
+      setLinkedPersonIds([...linkedPersonIds, personId]);
+      // 自动添加到 involved_people
+      const person = persons.find(p => p.id === personId);
+      if (person) {
+        addTag('involved_people', person.name);
+      }
+    }
+    setPersonSearch('');
+    setShowPersonDropdown(false);
+  };
+
+  // 解绑人物
+  const unlinkPerson = (personId) => {
+    setLinkedPersonIds(linkedPersonIds.filter(id => id !== personId));
+    // 从 involved_people 中移除
+    const person = persons.find(p => p.id === personId);
+    if (person) {
+      const current = parseJsonArray(editStructured.involved_people);
+      const newArray = current.filter(name => name !== person.name);
+      setEditStructured({ ...editStructured, involved_people: JSON.stringify(newArray) });
+    }
+  };
+
   // 音频播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -88,11 +132,15 @@ const StoryDetail = () => {
   useEffect(() => {
     const fetchStory = async () => {
       try {
-        const res = await getStory(id);
-        setStory(res.data);
+        const [storyRes, personsRes] = await Promise.all([
+          getStory(id),
+          getPersons()
+        ]);
+        setStory(storyRes.data);
+        setPersons(personsRes.data || []);
 
         // 初始化编辑状态
-        setEditNarrativePolish(res.data.narrative_polish || '');
+        setEditNarrativePolish(storyRes.data.narrative_polish || '');
 
         // 轮询生成状态（只对pending/生成中状态轮询）
         if (res.data?.generation_status && !['done', 'failed'].includes(res.data.generation_status)) {
@@ -148,6 +196,10 @@ const StoryDetail = () => {
         key_events: story.key_events || '[]',
         time_range: story.time_range || '',
       });
+      // 初始化关联人物
+      if (story.persons) {
+        setLinkedPersonIds(story.persons.map(p => p.id));
+      }
     }
   }, [story, activeTab, isEditing]);
 
@@ -232,7 +284,7 @@ const StoryDetail = () => {
           setStory(res.data);
         }
       } else if (activeTab === 'structured') {
-        // Tab3: 保存结构化信息
+        // Tab3: 保存结构化信息 + 人物绑定
         await patchStory(id, {
           title: editStructured.title || null,
           summary: editStructured.summary || null,
@@ -243,10 +295,12 @@ const StoryDetail = () => {
           involved_people: editStructured.involved_people,
           key_events: editStructured.key_events,
           time_range: editStructured.time_range || null,
+          person_ids: linkedPersonIds,
         });
         // 立即刷新
         const res = await getStory(id);
         setStory(res.data);
+        setLinkedPersonIds(res.data.persons?.map(p => p.id) || []);
       }
       setIsEditing(false);
     } catch (err) {
@@ -920,6 +974,90 @@ const StoryDetail = () => {
                         {person}
                       </span>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 人物绑定 */}
+              {isEditing && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <label className="block text-xs text-gray-400 uppercase mb-2">绑定家庭成员</label>
+                  <p className="text-xs text-gray-500 mb-2">在家庭成员列表中选择，自动添加到"涉及人物"</p>
+
+                  {/* 已绑定的人物 */}
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {getLinkedPersons().map((person) => (
+                      <div
+                        key={person.id}
+                        className="flex items-center gap-1 px-2 py-1 bg-[#4A3728] text-white rounded-full text-sm"
+                      >
+                        {person.avatar_url ? (
+                          <img src={person.avatar_url} alt={person.name} className="w-5 h-5 rounded-full" />
+                        ) : (
+                          <span className="w-5 h-5 rounded-full bg-[#D4A574] text-white flex items-center justify-center text-xs">
+                            {person.name?.charAt(0)}
+                          </span>
+                        )}
+                        <span>{person.name}</span>
+                        <button
+                          onClick={() => unlinkPerson(person.id)}
+                          className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-[#5A4738]"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 添加按钮 */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowPersonDropdown(!showPersonDropdown)}
+                      className="px-3 py-2 border border-dashed border-[#D4A574] text-[#D4A574] rounded-lg text-sm hover:bg-[#FEF3C7]"
+                    >
+                      + 绑定家庭成员
+                    </button>
+
+                    {/* 下拉列表 */}
+                    {showPersonDropdown && (
+                      <div className="absolute z-10 mt-1 w-64 bg-white border border-[#E5DED3] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {/* 搜索框 */}
+                        <div className="p-2 border-b border-gray-100">
+                          <input
+                            type="text"
+                            value={personSearch}
+                            onChange={(e) => setPersonSearch(e.target.value)}
+                            placeholder="搜索家庭成员..."
+                            className="w-full px-2 py-1 border border-gray-200 rounded text-sm"
+                            autoFocus
+                          />
+                        </div>
+                        {/* 成员列表 */}
+                        <div className="max-h-32 overflow-y-auto">
+                          {getFilteredPersons()
+                            .filter(p => !linkedPersonIds.includes(p.id))
+                            .map((person) => (
+                              <div
+                                key={person.id}
+                                onClick={() => linkPerson(person.id)}
+                                className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                              >
+                                {person.avatar_url ? (
+                                  <img src={person.avatar_url} alt={person.name} className="w-6 h-6 rounded-full" />
+                                ) : (
+                                  <div className="w-6 h-6 rounded-full bg-[#D4A574] text-white flex items-center justify-center text-xs">
+                                    {person.name?.charAt(0)}
+                                  </div>
+                                )}
+                                <span className="text-sm text-gray-700">{person.name}</span>
+                              </div>
+                            ))}
+                          {getFilteredPersons().filter(p => !linkedPersonIds.includes(p.id)).length === 0 && (
+                            <div className="px-3 py-2 text-xs text-gray-400">没有更多家庭成员</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
