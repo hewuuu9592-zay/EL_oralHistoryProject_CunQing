@@ -1,4 +1,4 @@
-# 环境变量
+# 环境变量（包含 API Key）
 .env
 
 # Python
@@ -6,7 +6,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
 
 # 数据库
 *.db
@@ -27,19 +26,6 @@ static/audio/
 *.sw?
 *.suo
 *.ntvs*
-*.njsproj
-*.sln
 
 # 系统文件
 .DS_Store
-Thumbs.db
-
-# 依赖
-node_modules/
-dist/
-*.log
-npm-debug.log*
-
-# 前端构建
-genmmai-web/node_modules/
-genmmai-web/dist/
